@@ -188,7 +188,9 @@ def test_due_prompt_waits_for_free_context_and_is_queued_once(
     scheduler.tick(ContextState.FREE)
 
     assert scheduler.state is State.PROMPTING
-    assert prompts == [ShowPrompt(kind="quick")]
+    assert prompts == [
+        ShowPrompt(kind="quick", message="Meeting's over. Want a quick eye break?")
+    ]
 
 
 @pytest.mark.parametrize(

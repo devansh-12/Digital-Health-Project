@@ -9,6 +9,7 @@ from PyQt6.QtGui import QKeyEvent
 from PyQt6.QtWidgets import QApplication
 
 from screensense.core.clock import FakeClock
+from screensense.core.events import ShowPrompt
 from screensense.ui.overlay import BreakOverlay
 from screensense.ui.theme import load_stylesheet
 
@@ -39,6 +40,18 @@ def test_overlay_has_expected_copy_and_four_actions(overlay: BreakOverlay) -> No
         overlay.snooze_button.text(),
         overlay.skip_button.text(),
     ] == ["Eye Yoga (60s)", "Quick break (20s)", "Snooze 5 min", "Skip"]
+
+
+def test_overlay_displays_queued_recovery_copy(overlay: BreakOverlay) -> None:
+    """Show the meeting recovery copy supplied by the scheduler event."""
+    overlay.show_prompt(
+        ShowPrompt(kind="quick", message="Meeting's over. Want a quick eye break?")
+    )
+
+    assert overlay.prompt_label.text() == "Meeting's over. Want a quick eye break?"
+
+    overlay.show_prompt(ShowPrompt(kind="quick"))
+    assert overlay.prompt_label.text() == "Time to rest your eyes 👀"
 
 
 def test_overlay_is_frameless_topmost_and_does_not_activate_on_show(

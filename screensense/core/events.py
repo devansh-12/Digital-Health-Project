@@ -20,6 +20,7 @@ class ShowPrompt:
     """Request that the UI show a break prompt of the given kind."""
 
     kind: BreakKind
+    message: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

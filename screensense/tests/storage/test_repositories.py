@@ -2,8 +2,11 @@
 
 import pytest
 
+from screensense.core.clock import FakeClock
 from screensense.core.config import Settings
-from screensense.core.context import ContextRule
+from screensense.core.context import ContextRule, ContextState
+from screensense.core.events import EventBus, ShowPrompt
+from screensense.core.scheduler import Scheduler
 from screensense.storage.db import open_database
 from screensense.storage.repositories import (
     BreakKind,
@@ -121,3 +124,59 @@ def test_context_rules_repository_rejects_empty_process(connection) -> None:
 
     with pytest.raises(ValueError, match="process"):
         repository.set_rule("  ", ContextRule.DENY)
+
+
+def test_scheduler_records_one_suppressed_prompt(connection) -> None:
+    """Persist one suppressed record even when a queued prompt spans many intervals."""
+    clock = FakeClock(wall_seconds=1_000)
+    repository = BreaksRepository(connection)
+    bus = EventBus()
+    prompts: list[ShowPrompt] = []
+    bus.subscribe(ShowPrompt, prompts.append)
+    scheduler = Scheduler(
+        Settings(work_interval_minutes=10), clock, bus, breaks_repository=repository
+    )
+    scheduler.tick(ContextState.CALL)
+    clock.advance(10 * 60)
+    scheduler.tick(ContextState.CALL)
+    clock.advance(30 * 60)
+    scheduler.tick(ContextState.CALL)
+
+    records = repository.list_recent()
+    assert len(records) == 1
+    assert records[0].kind is BreakKind.QUICK
+    assert records[0].outcome is BreakOutcome.SUPPRESSED
+    assert records[0].due_at == 1_600
+
+    scheduler.tick(ContextState.FREE)
+
+    assert len(prompts) == 1
+    assert prompts[0].message == "Meeting's over. Want a quick eye break?"
+    assert len(repository.list_recent()) == 1
+
+
+def test_scheduler_records_natural_break(connection) -> None:
+    """Persist natural idle completion with its kind, outcome, and duration."""
+    clock = FakeClock(wall_seconds=2_000)
+    repository = BreaksRepository(connection)
+    scheduler = Scheduler(
+        Settings(
+            work_interval_minutes=10,
+            quick_break_seconds=20,
+            idle_threshold_seconds=1,
+        ),
+        clock,
+        EventBus(),
+        breaks_repository=repository,
+    )
+    clock.advance(9 * 60)
+    scheduler.tick(ContextState.FREE)
+    scheduler.tick(ContextState.IDLE)
+    clock.advance(19)
+    scheduler.tick(ContextState.IDLE)
+
+    records = repository.list_recent()
+    assert len(records) == 1
+    assert records[0].kind is BreakKind.NATURAL
+    assert records[0].outcome is BreakOutcome.COMPLETED
+    assert records[0].duration_s == 20

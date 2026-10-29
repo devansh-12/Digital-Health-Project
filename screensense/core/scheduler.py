@@ -1,6 +1,7 @@
 """Manage break scheduling using injected time, context, and event dependencies."""
 
 from enum import StrEnum
+from typing import Protocol
 
 from screensense.core.clock import Clock
 from screensense.core.config import Settings
@@ -24,6 +25,16 @@ class State(StrEnum):
     SUPPRESS = "suppress"
 
 
+class BreakRecorder(Protocol):
+    """Persist suppressed prompts and naturally completed breaks."""
+
+    def record_suppressed(self, due_at: int, kind: BreakKind) -> None:
+        """Record one queued prompt as suppressed."""
+
+    def record_natural(self, due_at: int, duration_s: int) -> None:
+        """Record an idle period counted as a natural break."""
+
+
 _WORK_CONTEXTS = frozenset(
     {ContextState.FREE, ContextState.FULLSCREEN, ContextState.CALL}
 )
@@ -37,17 +48,21 @@ class Scheduler:
         settings: Settings,
         clock: Clock,
         event_bus: EventBus,
+        breaks_repository: BreakRecorder | None = None,
     ) -> None:
         """Initialize the scheduler in the working state."""
         self._settings = settings
         self._clock = clock
         self._event_bus = event_bus
+        self._breaks_repository = breaks_repository
         self._state = State.WORKING
         self._last_tick = clock.monotonic()
         self._last_context = ContextState.FREE
         self._work_elapsed = 0.0
         self._completed_breaks = 0
         self._prompt_queued = False
+        self._queued_for_suppression = False
+        self._suppressed_recorded = False
         self._snooze_until: float | None = None
         self._prompt_kind: BreakKind | None = None
         self._active_break_kind: BreakKind | None = None
@@ -82,7 +97,7 @@ class Scheduler:
 
         if self._state is State.PROMPTING:
             if context is not ContextState.FREE:
-                self._prompt_queued = True
+                self._queue_suppressed_prompt()
                 self._state = State.SUPPRESS
             self._last_context = context
             return
@@ -99,6 +114,7 @@ class Scheduler:
             if context is ContextState.FREE:
                 self._show_prompt()
             else:
+                self._queue_suppressed_prompt()
                 self._state = State.SUPPRESS
             self._last_context = context
             return
@@ -107,7 +123,7 @@ class Scheduler:
             if context is ContextState.FREE:
                 self._show_prompt()
             else:
-                self._prompt_queued = True
+                self._queue_suppressed_prompt()
                 self._state = State.SUPPRESS
         elif context is not ContextState.FREE:
             self._state = State.SUPPRESS
@@ -123,6 +139,8 @@ class Scheduler:
         self._snooze_until = now + self._settings.snooze_minutes * 60
         self._last_tick = now
         self._prompt_queued = False
+        self._queued_for_suppression = False
+        self._suppressed_recorded = False
         self._state = State.SNOOZED
 
     def skip(self) -> None:
@@ -181,6 +199,11 @@ class Scheduler:
         if not self._idle_break_counted and now - self._idle_since >= remaining_idle_seconds:
             self._idle_break_counted = True
             self._completed_breaks += 1
+            if self._breaks_repository is not None:
+                self._breaks_repository.record_natural(
+                    due_at=int(self._clock.wall_time()),
+                    duration_s=self._settings.quick_break_seconds,
+                )
             self._event_bus.publish(
                 BreakCompleted(
                     kind="natural",
@@ -192,11 +215,30 @@ class Scheduler:
 
     def _show_prompt(self) -> None:
         kind = self._next_break_kind()
+        message = (
+            "Meeting's over. Want a quick eye break?"
+            if self._queued_for_suppression
+            else None
+        )
         self._prompt_kind = kind
         self._prompt_queued = False
+        self._queued_for_suppression = False
+        self._suppressed_recorded = False
         self._snooze_until = None
         self._state = State.PROMPTING
-        self._event_bus.publish(ShowPrompt(kind=kind))
+        self._event_bus.publish(ShowPrompt(kind=kind, message=message))
+
+    def _queue_suppressed_prompt(self) -> None:
+        """Queue one due reminder and persist its suppression once."""
+        self._prompt_queued = True
+        self._queued_for_suppression = True
+        if self._suppressed_recorded:
+            return
+        if self._breaks_repository is not None:
+            self._breaks_repository.record_suppressed(
+                due_at=int(self._clock.wall_time()), kind=self._next_break_kind()
+            )
+        self._suppressed_recorded = True
 
     def _next_break_kind(self) -> BreakKind:
         next_break_number = self._completed_breaks + 1
@@ -216,6 +258,8 @@ class Scheduler:
         self._state = State.WORKING
         self._work_elapsed = 0.0
         self._prompt_queued = False
+        self._queued_for_suppression = False
+        self._suppressed_recorded = False
         self._snooze_until = None
         self._prompt_kind = None
         self._active_break_kind = None

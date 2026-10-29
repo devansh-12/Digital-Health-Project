@@ -49,3 +49,9 @@
 - **Files changed:** `screensense/tests/core/test_scheduler.py`.
 - **Test result:** `ruff check .` and strict mypy on `screensense/core` pass; full pytest has 2 expected failures (the queued-prompt recovery copy is not present yet) and 142 passes.
 - **Manual check:** none required for this test-first scheduler chunk.
+
+## 2.3b Suppression/queue implementation (green)
+
+- **Files changed:** `screensense/core/events.py`, `screensense/core/scheduler.py`, `screensense/storage/repositories.py`, `screensense/ui/overlay.py`, `screensense/tests/core/test_scheduler.py`, `screensense/tests/storage/test_repositories.py`, `screensense/tests/ui/test_overlay.py`.
+- **Test result:** `ruff check .`, strict mypy on `screensense/core`, and full pytest pass (147 passed).
+- **Manual check:** none required for this pure scheduler/persistence behavior; the copy is covered by the overlay test.

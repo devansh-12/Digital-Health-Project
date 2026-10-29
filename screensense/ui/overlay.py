@@ -165,6 +165,11 @@ class BreakOverlay(QWidget):
 
     def show_prompt(self, event: ShowPrompt | None = None) -> None:
         """Reset the 20-second countdown and show the prompt without activation."""
+        self.prompt_label.setText(
+            event.message
+            if event is not None and event.message is not None
+            else "Time to rest your eyes 👀"
+        )
         self._start_countdown()
         self.show()
 

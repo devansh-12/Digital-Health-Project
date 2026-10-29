@@ -202,6 +202,34 @@ class BreaksRepository:
             if cursor.rowcount == 0:
                 raise KeyError(f"Break not found: {break_id}")
 
+    def record_suppressed(self, due_at: int, kind: str) -> None:
+        """Insert one suppressed reminder using parameterized SQL."""
+        if kind not in (BreakKind.QUICK.value, BreakKind.LONG.value):
+            raise ValueError("suppressed prompts must use quick or long kind")
+        with self._connection:
+            self._connection.execute(
+                "INSERT INTO breaks (due_at, kind, outcome) VALUES (?, ?, ?)",
+                (due_at, kind, BreakOutcome.SUPPRESSED.value),
+            )
+
+    def record_natural(self, due_at: int, duration_s: int) -> None:
+        """Insert a completed natural break using parameterized SQL."""
+        if isinstance(duration_s, bool) or not isinstance(duration_s, int) or duration_s < 0:
+            raise ValueError("duration_s must be a non-negative integer")
+        with self._connection:
+            self._connection.execute(
+                """
+                INSERT INTO breaks (due_at, kind, outcome, duration_s)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    due_at,
+                    BreakKind.NATURAL.value,
+                    BreakOutcome.COMPLETED.value,
+                    duration_s,
+                ),
+            )
+
     @staticmethod
     def _to_record(row: sqlite3.Row | tuple[object, ...]) -> BreakRecord:
         outcome_value = row[4]
