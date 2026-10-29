@@ -61,3 +61,9 @@
 - **Files changed:** `docs/diagrams/example_day.md`.
 - **Test result:** documentation-only chunk; `ruff check .`, strict mypy on `screensense/core`, and full pytest pass (147 passed).
 - **Manual check:** review the diagram and its marked wiring gaps before wiring the app.
+
+## 2.4a Tracker tests (red)
+
+- **Files changed:** `.gitignore`, `screensense/core/tracker.py`, `screensense/tests/core/test_tracker.py`.
+- **Test result:** `ruff check .` and strict mypy on `screensense/core` pass; full pytest has 9 expected failures because `Tracker` and `longest_unbroken_active_stretch` are not implemented, with 147 passes.
+- **Manual check:** none required for this test-first aggregation chunk.
