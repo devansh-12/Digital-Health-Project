@@ -49,7 +49,7 @@ You will only ever type ONE line per step (see "Driver prompts"). Everything els
 ## Progress checklist (the assistant ticks these)
 
 - [x] 2.1a Platform interfaces + stub
-- [ ] 2.1b Windows idle provider
+- [x] 2.1b Windows idle provider
 - [ ] 2.1c Windows foreground + fullscreen
 - [ ] 2.1d Windows power events + autostart
 - [ ] 2.2a Context types + decision-table tests (red)
