@@ -1,10 +1,13 @@
 """Define typed context inputs and states for reminder suppression."""
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, time
 from enum import StrEnum
+from typing import Protocol
 
+from screensense.core.clock import Clock
+from screensense.core.events import ContextChanged, EventBus
 from screensense.platform_adapters.base import WindowInfo
 
 
@@ -56,6 +59,13 @@ class ContextInputs:
     idle_threshold: float
     window: WindowInfo | None
     rules: Mapping[str, ContextRule] = field(default_factory=dict)
+
+
+class ContextRulesSource(Protocol):
+    """Load process context rules from a repository."""
+
+    def load_all(self) -> Mapping[str, ContextRule]:
+        """Return the latest process-to-rule mapping."""
 
 
 _CALL_PROCESSES = frozenset({"zoom.exe", "teams.exe", "webex.exe", "slack.exe"})
@@ -112,3 +122,77 @@ def evaluate(inputs: ContextInputs) -> ContextState:
 def _normalize_process(process: str) -> str:
     """Normalize a process name for case-insensitive user-rule matching."""
     return process.strip().casefold()
+
+
+class ContextEvaluator:
+    """Debounce context changes and publish confirmed transitions."""
+
+    def __init__(
+        self,
+        clock: Clock,
+        rules_source: ContextRulesSource,
+        event_bus: EventBus,
+        debounce_seconds: float = 2.0,
+    ) -> None:
+        """Initialize context evaluation with injectable time and rule storage."""
+        if debounce_seconds < 0:
+            raise ValueError("debounce_seconds must be non-negative")
+        self._clock = clock
+        self._rules_source = rules_source
+        self._event_bus = event_bus
+        self._debounce_seconds = debounce_seconds
+        self._current: ContextState | None = None
+        self._pending: ContextState | None = None
+        self._pending_since: float | None = None
+        self._last_rules: dict[str, ContextRule] | None = None
+
+    @property
+    def current(self) -> ContextState | None:
+        """Return the last confirmed state, if evaluation has started."""
+        return self._current
+
+    def evaluate(self, inputs: ContextInputs) -> ContextState:
+        """Evaluate current inputs and return the last debounced state."""
+        latest_rules = dict(self._rules_source.load_all())
+        candidate = evaluate(replace(inputs, rules=latest_rules))
+        now = self._clock.monotonic()
+        rules_changed = self._last_rules is not None and latest_rules != self._last_rules
+        self._last_rules = latest_rules
+
+        if self._current is None:
+            self._set_current(candidate)
+            return candidate
+
+        if rules_changed:
+            self._pending = None
+            self._pending_since = None
+            if candidate != self._current:
+                self._set_current(candidate)
+            return self._current
+
+        if candidate == self._current:
+            self._pending = None
+            self._pending_since = None
+            return self._current
+
+        if candidate != self._pending:
+            self._pending = candidate
+            self._pending_since = now
+            return self._current
+
+        if (
+            self._pending_since is not None
+            and now - self._pending_since >= self._debounce_seconds
+        ):
+            self._set_current(candidate)
+        return self._current
+
+    def _set_current(self, state: ContextState) -> None:
+        """Store a changed state and publish one transition event."""
+        previous = self._current
+        if previous is not None and previous == state:
+            return
+        self._current = state
+        self._pending = None
+        self._pending_since = None
+        self._event_bus.publish(ContextChanged(previous=previous, current=state))

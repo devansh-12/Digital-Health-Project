@@ -37,3 +37,9 @@
 - **Test result:** `ruff check .`, strict mypy on `screensense/core`, and full pytest pass (131 passed); `core/context.py` coverage is 100%.
 - **Manual check:** none required for this pure evaluator chunk.
 - **Rule assumption:** since the documented `ContextState` has no `DENIED` member, a per-process `deny` rule maps to `OUTSIDE_HOURS` as a suppressed context. Lock, work-hours, and idle checks take precedence over process rules.
+
+## 2.2c Hysteresis + user rules
+
+- **Files changed:** `screensense/core/context.py`, `screensense/core/events.py`, `screensense/storage/repositories.py`, `screensense/tests/core/test_context.py`, `screensense/tests/storage/test_repositories.py`.
+- **Test result:** `ruff check .`, strict mypy on `screensense/core`, and full pytest pass (136 passed); `core/context.py` coverage is 97%.
+- **Manual check:** none required for this deterministic context wrapper.

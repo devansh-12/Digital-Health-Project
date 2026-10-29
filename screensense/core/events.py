@@ -1,8 +1,13 @@
-"""Define scheduler events and a synchronous pure-Python event bus."""
+"""Define typed domain events and a synchronous pure-Python event bus."""
+
+from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal, TypeVar, cast
+from typing import TYPE_CHECKING, Literal, TypeVar, cast
+
+if TYPE_CHECKING:
+    from screensense.core.context import ContextState
 
 EventT = TypeVar("EventT")
 EventHandler = Callable[[EventT], None]
@@ -35,6 +40,14 @@ class BreakSkipped:
 @dataclass(frozen=True, slots=True)
 class SchedulerTick:
     """Signal that the scheduler should evaluate its current state."""
+
+
+@dataclass(frozen=True, slots=True)
+class ContextChanged:
+    """Report a confirmed context-state transition."""
+
+    previous: ContextState | None
+    current: ContextState
 
 
 class EventBus:

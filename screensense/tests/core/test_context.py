@@ -6,7 +6,15 @@ from datetime import datetime, time
 import pytest
 
 from screensense.core import context
-from screensense.core.context import ContextInputs, ContextRule, ContextState, WorkHours
+from screensense.core.clock import FakeClock
+from screensense.core.context import (
+    ContextEvaluator,
+    ContextInputs,
+    ContextRule,
+    ContextState,
+    WorkHours,
+)
+from screensense.core.events import ContextChanged, EventBus
 from screensense.platform_adapters.base import WindowInfo
 
 WEEKDAYS = WorkHours(start=time(9), end=time(18))
@@ -234,3 +242,80 @@ def test_fullscreen_ok_rule_does_not_override_call_detection() -> None:
     )
 
     assert context.evaluate(inputs) is ContextState.CALL
+
+
+class MutableRulesSource:
+    """Provide a mutable rule mapping for evaluator behavior tests."""
+
+    def __init__(self) -> None:
+        """Initialize an empty rule mapping."""
+        self.rules: dict[str, ContextRule] = {}
+
+    def load_all(self) -> dict[str, ContextRule]:
+        """Return a copy of the current process rules."""
+        return dict(self.rules)
+
+
+def test_context_evaluator_debounces_rapid_flapping() -> None:
+    """Ignore a brief state change that returns to the confirmed state."""
+    clock = FakeClock()
+    bus = EventBus()
+    source = MutableRulesSource()
+    evaluator = ContextEvaluator(clock, source, bus)
+    events: list[ContextChanged] = []
+    bus.subscribe(ContextChanged, events.append)
+
+    assert evaluator.evaluate(make_inputs()) is ContextState.FREE
+    clock.advance(0.5)
+    assert evaluator.evaluate(make_inputs(idle_seconds=120)) is ContextState.FREE
+    clock.advance(1.0)
+    assert evaluator.evaluate(make_inputs()) is ContextState.FREE
+    clock.advance(2.0)
+
+    assert evaluator.evaluate(make_inputs()) is ContextState.FREE
+    assert [event.current for event in events] == [ContextState.FREE]
+
+
+def test_context_evaluator_accepts_change_after_two_seconds() -> None:
+    """Publish a state that remains the candidate through the debounce window."""
+    clock = FakeClock()
+    bus = EventBus()
+    evaluator = ContextEvaluator(clock, MutableRulesSource(), bus)
+    events: list[ContextChanged] = []
+    bus.subscribe(ContextChanged, events.append)
+    evaluator.evaluate(make_inputs())
+
+    clock.advance(0.25)
+    assert evaluator.evaluate(make_inputs(idle_seconds=120)) is ContextState.FREE
+    clock.advance(1.99)
+    assert evaluator.evaluate(make_inputs(idle_seconds=120)) is ContextState.FREE
+    clock.advance(0.01)
+
+    assert evaluator.evaluate(make_inputs(idle_seconds=120)) is ContextState.IDLE
+    assert [event.current for event in events] == [
+        ContextState.FREE,
+        ContextState.IDLE,
+    ]
+
+
+def test_context_evaluator_applies_rule_updates_immediately() -> None:
+    """Reload repository rules on every check and bypass state debounce on update."""
+    clock = FakeClock()
+    bus = EventBus()
+    source = MutableRulesSource()
+    evaluator = ContextEvaluator(clock, source, bus)
+    events: list[ContextChanged] = []
+    bus.subscribe(ContextChanged, events.append)
+    fullscreen = make_inputs(
+        window=WindowInfo("Game", "game.exe", (0, 0, 1920, 1080), True)
+    )
+
+    assert evaluator.evaluate(fullscreen) is ContextState.FULLSCREEN
+    clock.advance(0.1)
+    source.rules["game.exe"] = ContextRule.FULLSCREEN_OK
+
+    assert evaluator.evaluate(fullscreen) is ContextState.FREE
+    assert [event.current for event in events] == [
+        ContextState.FULLSCREEN,
+        ContextState.FREE,
+    ]

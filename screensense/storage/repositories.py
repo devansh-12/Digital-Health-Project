@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from screensense.core.config import Settings, SettingsKey
+from screensense.core.context import ContextRule
 
 
 class BreakKind(StrEnum):
@@ -88,6 +89,48 @@ class SettingsRepository:
                 ON CONFLICT(key) DO UPDATE SET value = excluded.value
                 """,
                 entries,
+            )
+
+
+class ContextRulesRepository:
+    """Load and update per-process context rules in SQLite."""
+
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        """Create a repository backed by an open database connection."""
+        self._connection = connection
+
+    def load_all(self) -> dict[str, ContextRule]:
+        """Return all process rules, keyed by normalized process name."""
+        rows = self._connection.execute(
+            "SELECT process, rule FROM context_rules ORDER BY process"
+        )
+        return {
+            str(row[0]): ContextRule(str(row[1]))
+            for row in rows
+        }
+
+    def set_rule(self, process: str, rule: ContextRule) -> None:
+        """Insert or update a rule for a normalized process name."""
+        process_name = process.strip().casefold()
+        if not process_name:
+            raise ValueError("process must not be empty")
+        with self._connection:
+            self._connection.execute(
+                """
+                INSERT INTO context_rules (process, rule) VALUES (?, ?)
+                ON CONFLICT(process) DO UPDATE SET rule = excluded.rule
+                """,
+                (process_name, rule.value),
+            )
+
+    def delete_rule(self, process: str) -> None:
+        """Remove a process rule if it exists."""
+        process_name = process.strip().casefold()
+        if not process_name:
+            raise ValueError("process must not be empty")
+        with self._connection:
+            self._connection.execute(
+                "DELETE FROM context_rules WHERE process = ?", (process_name,)
             )
 
 

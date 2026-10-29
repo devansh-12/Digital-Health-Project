@@ -3,11 +3,13 @@
 import pytest
 
 from screensense.core.config import Settings
+from screensense.core.context import ContextRule
 from screensense.storage.db import open_database
 from screensense.storage.repositories import (
     BreakKind,
     BreakOutcome,
     BreaksRepository,
+    ContextRulesRepository,
     SettingsRepository,
 )
 
@@ -96,3 +98,26 @@ def test_break_repository_rejects_outcome_for_unknown_id(connection) -> None:
     """Raise when updating a break that is not present in storage."""
     with pytest.raises(KeyError):
         BreaksRepository(connection).update_outcome(999, BreakOutcome.SKIPPED)
+
+
+def test_context_rules_repository_normalizes_round_trips_and_deletes(connection) -> None:
+    """Persist process names and return typed context rules."""
+    repository = ContextRulesRepository(connection)
+    repository.set_rule("  Game.EXE  ", ContextRule.FULLSCREEN_OK)
+    repository.set_rule("zoom.exe", ContextRule.CALL)
+
+    assert repository.load_all() == {
+        "game.exe": ContextRule.FULLSCREEN_OK,
+        "zoom.exe": ContextRule.CALL,
+    }
+
+    repository.delete_rule("GAME.EXE")
+    assert repository.load_all() == {"zoom.exe": ContextRule.CALL}
+
+
+def test_context_rules_repository_rejects_empty_process(connection) -> None:
+    """Reject a blank process name instead of storing an unusable rule."""
+    repository = ContextRulesRepository(connection)
+
+    with pytest.raises(ValueError, match="process"):
+        repository.set_rule("  ", ContextRule.DENY)
