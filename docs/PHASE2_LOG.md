@@ -24,3 +24,9 @@
 - **Files changed:** `screensense/platform_adapters/base.py`, `screensense/platform_adapters/stub.py`, `screensense/platform_adapters/windows.py`, `screensense/ui/platform_event_bridge.py`, `screensense/tests/platform_adapters/test_windows_power_autostart.py`, `screensense/tests/ui/test_platform_event_bridge.py`.
 - **Test result:** `ruff check .`, strict mypy on `screensense/core`, and `PYTHONPATH=. pytest -q` pass (99 passed).
 - **Manual check (pending Windows):** enable autostart and confirm ScreenSense under Task Manager > Startup; subscribe a short console harness to power events, start the provider, lock/unlock the PC and sleep/resume, confirm `LOCK`, `UNLOCK`, `SLEEP`, and `RESUME`, then stop the provider. The `PowerEventBridge` uses an explicit queued Qt connection so native-listener-thread callbacks run in the UI thread.
+
+## 2.2a Context types + decision-table tests (red)
+
+- **Files changed:** `screensense/core/context.py`, `screensense/tests/core/test_context.py`.
+- **Test result:** `ruff check .` and strict mypy on `screensense/core` pass; full pytest has 28 expected failures because `evaluate` is not implemented and 100 passes.
+- **Manual check:** none required for this test-first chunk.
