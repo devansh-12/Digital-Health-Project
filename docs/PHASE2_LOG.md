@@ -79,3 +79,10 @@
 - **Files changed:** `screensense/core/tracker.py`, `screensense/platform_adapters/base.py`, `screensense/platform_adapters/stub.py`, `screensense/platform_adapters/windows.py`, `screensense/storage/repositories.py`, `screensense/ui/usage_flush.py`, `screensense/app.py`, `screensense/tests/core/test_tracker.py`, `screensense/tests/storage/test_repositories.py`, `screensense/tests/platform_adapters/test_stub.py`, `screensense/tests/platform_adapters/test_windows_power_autostart.py`, `screensense/tests/ui/test_usage_flush.py`, `docs/diagrams/example_day.md`.
 - **Test result:** `ruff check .`, strict mypy on `screensense/core`, and full pytest pass (162 passed).
 - **Manual check:** none beyond the 2.1d Windows power/autostart check already pending in this log; app wiring now flushes on exit and on sleep/lock, using worker-thread-owned SQLite connections.
+
+## 2.5 Integration test: simulated 8-hour day
+
+- **Files changed:** `screensense/core/scheduler.py`, `screensense/storage/repositories.py`, `screensense/tests/test_phase2_integration.py`, `docs/PHASE2_RUNBOOK.md`, `docs/PHASE2_LOG.md`.
+- **Test result:** `ruff check .`, strict mypy on `screensense/core`, and full pytest pass (163 passed).
+- **Manual check:** none required for the fake-adapter integration scenario; the Windows-specific checks from 2.1b, 2.1c, and 2.1d remain pending.
+- **Persistence behavior:** a queued suppressed break remains suppressed if skipped; if the user completes it, that same row is finalized as completed. This corrects the shorthand statement in the 2.3b entry that all queued reminders remain suppressed after delivery.

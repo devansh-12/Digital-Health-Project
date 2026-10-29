@@ -26,10 +26,20 @@ class State(StrEnum):
 
 
 class BreakRecorder(Protocol):
-    """Persist suppressed prompts and naturally completed breaks."""
+    """Persist suppressed prompts, completed breaks, and natural breaks."""
 
-    def record_suppressed(self, due_at: int, kind: BreakKind) -> None:
-        """Record one queued prompt as suppressed."""
+    def record_suppressed(self, due_at: int, kind: BreakKind) -> int:
+        """Record one queued prompt and return its database identifier."""
+
+    def record_completed(
+        self,
+        due_at: int,
+        shown_at: int,
+        kind: BreakKind,
+        duration_s: int,
+        suppressed_break_id: int | None,
+    ) -> None:
+        """Persist a completed prompt, finalizing its suppressed record if present."""
 
     def record_natural(self, due_at: int, duration_s: int) -> None:
         """Record an idle period counted as a natural break."""
@@ -65,6 +75,9 @@ class Scheduler:
         self._suppressed_recorded = False
         self._snooze_until: float | None = None
         self._prompt_kind: BreakKind | None = None
+        self._prompt_due_at: int | None = None
+        self._suppressed_break_id: int | None = None
+        self._active_break_record_id: int | None = None
         self._active_break_kind: BreakKind | None = None
         self._idle_since: float | None = None
         self._idle_break_counted = False
@@ -172,6 +185,15 @@ class Scheduler:
         if self._active_break_kind is None:
             raise RuntimeError("No break is active")
         kind = self._active_break_kind
+        if self._breaks_repository is not None:
+            now_wall = int(self._clock.wall_time())
+            self._breaks_repository.record_completed(
+                due_at=self._prompt_due_at if self._prompt_due_at is not None else now_wall,
+                shown_at=now_wall,
+                kind=kind,
+                duration_s=duration_s,
+                suppressed_break_id=self._active_break_record_id,
+            )
         self._event_bus.publish(BreakCompleted(kind=kind, duration_s=duration_s))
         self._completed_breaks += 1
         self._begin_work_interval()
@@ -215,13 +237,19 @@ class Scheduler:
 
     def _show_prompt(self) -> None:
         kind = self._next_break_kind()
+        is_queued = self._queued_for_suppression
         message = (
             "Meeting's over. Want a quick eye break?"
-            if self._queued_for_suppression
+            if is_queued
             else None
         )
         self._prompt_kind = kind
+        self._prompt_due_at = int(self._clock.wall_time())
+        self._active_break_record_id = (
+            self._suppressed_break_id if is_queued else None
+        )
         self._prompt_queued = False
+        self._suppressed_break_id = None
         self._queued_for_suppression = False
         self._suppressed_recorded = False
         self._snooze_until = None
@@ -235,7 +263,7 @@ class Scheduler:
         if self._suppressed_recorded:
             return
         if self._breaks_repository is not None:
-            self._breaks_repository.record_suppressed(
+            self._suppressed_break_id = self._breaks_repository.record_suppressed(
                 due_at=int(self._clock.wall_time()), kind=self._next_break_kind()
             )
         self._suppressed_recorded = True
@@ -262,6 +290,9 @@ class Scheduler:
         self._suppressed_recorded = False
         self._snooze_until = None
         self._prompt_kind = None
+        self._prompt_due_at = None
+        self._suppressed_break_id = None
+        self._active_break_record_id = None
         self._active_break_kind = None
         self._last_tick = self._clock.monotonic()
 
