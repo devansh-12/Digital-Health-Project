@@ -100,3 +100,10 @@
 - **Test result:** documentation-only; `ruff check .`, strict mypy on `screensense/core`, and full pytest pass (166 passed).
 - **Manual check:** pending. Run every checklist row on Windows 10 and Windows 11, record pass/fail, and measure every queued reminder from context-clear to overlay (must be ≤10 s). The Windows adapter checks from 2.1b–2.1d and the settings/manual verification from 2.6 are also pending.
 - **Gate:** `PHASES.md`: “Zero popups across the manual matrix; queued reminder shows ≤ 10 s after context clears.” The gate remains unverified until all matrix rows pass on target Windows versions with timing evidence.
+
+## W Session wrap-up
+
+- **Files changed:** `MEMORY.md`, `docs/PHASE2_RUNBOOK.md`, `docs/PHASE2_LOG.md`.
+- **Test result:** documentation-only; `ruff check .`, strict mypy on `screensense/core`, and full pytest pass (166 passed).
+- **Manual checks pending:** production runtime polling/context/scheduler wiring must be added before meaningful gate execution; then run the 2.1b idle provider, 2.1c foreground/fullscreen (including multi-monitor), 2.1d power/autostart, and 2.6 settings/process-only checks, plus every 2.7 matrix row on Windows 10 and Windows 11. Record sanitized results and queued-prompt timing.
+- **Phase 2 gate:** not passed. `PHASES.md` requires zero popups across the manual matrix and queued reminders within 10 seconds after context clears. The runtime wiring and Windows evidence are still outstanding.

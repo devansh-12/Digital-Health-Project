@@ -64,7 +64,7 @@ You will only ever type ONE line per step (see "Driver prompts"). Everything els
 - [x] 2.5 Integration test: simulated 8-hour day
 - [x] 2.6 Settings hooks: work hours + allow/deny rules
 - [x] 2.7 Manual test matrix + gate check
-- [ ] W Session wrap-up
+- [x] W Session wrap-up
 
 ---
 

@@ -60,11 +60,11 @@
 
 ## 7. Current State *(update every session)*
 
-- **Phase:** 0 (Foundations)
-- **Done:** PRD, architecture, roadmap, style guide drafted
-- **In progress:** none
-- **Next up:** repo skeleton, tray icon, config model, wireframes
-- **Blockers / open questions:** see §9
+- **Phase:** 2 (tracking & context awareness; runbook implementation chunks complete, gate not yet passed)
+- **Done:** Phase 0 and Phase 1 implementation; Phase 2 chunks 2.1a–2.7, including Windows adapter code, context evaluation, suppression/queueing, hourly tracking, SQLite persistence, work-hours/process-rule settings, simulated eight-hour integration test, and the manual test matrix. Phase 2 checks: ruff clean, strict mypy on `screensense/core` clean, 166 pytest tests pass.
+- **In progress:** Windows 10/11 manual validation. Production `app.py` still does not poll idle/window adapters or drive `ContextEvaluator` and `Scheduler.tick`; this runtime wiring must be completed before the manual gate can be meaningfully run.
+- **Next up:** (1) wire production adapter polling/context evaluation/scheduler ticks using injected time and persisted settings/rules; (2) run the Windows 10/11 adapter, settings, and manual matrix checks; (3) after the Phase 2 gate passes, begin Phase 3 Eye Yoga.
+- **Blockers / open questions:** the Phase 2 gate remains unmet pending runtime wiring and Windows evidence; other open questions are listed in §9.
 
 ## 8. Decision Log
 
@@ -75,6 +75,9 @@
 | (start) | Blink monitor is opt-in and a stretch phase | Privacy perception and schedule risk; core novelty doesn't depend on it |
 | (start) | No window titles stored | Privacy; only process names kept in rules |
 | (start) | Streak freeze (1/week) | Positive nudging; avoids punitive resets |
+| 2026-10-30 | Context rules are matched against normalized executable names; work hours use local weekdays and an exclusive end time | Keep persisted context data to process names and make schedule boundaries deterministic |
+| 2026-10-30 | Completing a queued reminder finalizes its existing suppressed row; skipping it leaves the row suppressed | Avoid duplicate break records while preserving suppressed-versus-completed outcomes |
+| 2026-10-30 | Phase 2 code tests do not substitute for the Windows gate; production polling and scheduler tick wiring remains required | The current app entry point does not yet connect platform sampling to context evaluation and scheduler decisions |
 
 ## 9. Open Questions
 
@@ -83,6 +86,12 @@
 - [ ] Which symptom questionnaire to adapt for pre/post evaluation?
 - [ ] License for our own code (MIT vs Apache-2.0)?
 - [ ] Review the 4 unread reference repos
+- [ ] Complete production idle/window polling, ContextEvaluator wiring, and scheduler ticking before attempting the Phase 2 manual gate.
+- [ ] Run 2.1b idle detection check on Windows 10 and 11.
+- [ ] Run 2.1c foreground/fullscreen checks on Windows 10 and 11, including multi-monitor cases.
+- [ ] Run 2.1d autostart and lock/unlock/sleep/resume checks on Windows 10 and 11.
+- [ ] Run 2.6 settings persistence and “Always allow here” process-only check on Windows 10 and 11.
+- [ ] Run all rows in `docs/PHASE2_MANUAL_TEST_MATRIX.md` on Windows 10 and 11 and capture the required sanitized timing evidence.
 
 ## 10. Glossary
 
