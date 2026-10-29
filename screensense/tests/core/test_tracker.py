@@ -1,6 +1,6 @@
 """Aggregation specifications for the not-yet-implemented tracker."""
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from typing import Any
 
 import pytest
@@ -8,7 +8,7 @@ import pytest
 from screensense.core import tracker as tracker_module
 from screensense.core.clock import FakeClock
 from screensense.core.context import ContextState
-from screensense.core.tracker import ActivitySegment
+from screensense.core.tracker import ActivitySegment, UsageBucket
 
 
 def make_tracker(wall_seconds: float = 0.0) -> tuple[Any, FakeClock]:
@@ -132,3 +132,46 @@ def test_simulated_eight_hour_day_aggregates_all_samples(
         "fullscreen_s": 7_200,
         "call_s": 7_200,
     }
+
+
+def test_flush_retains_failed_data_and_samples_added_during_write(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Retain failed batches and preserve samples added while a writer runs."""
+    tracker, clock = make_tracker()
+    tracker.sample(ContextState.FREE)
+    clock.advance(5)
+    tracker.sample(ContextState.FREE)
+
+    class FailingWriter:
+        """Simulate a storage error with a sensitive exception message."""
+
+        def write_usage(self, buckets: Sequence[UsageBucket]) -> None:
+            raise RuntimeError("private value must not reach logs")
+
+    assert not tracker.flush(FailingWriter())
+    assert tracker.buckets[0].active_s == 5
+    assert "Hourly usage flush failed" in caplog.text
+    assert "private value" not in caplog.text
+
+    class SamplingWriter:
+        """Add another sample during the write to verify acknowledgement safety."""
+
+        def __init__(self) -> None:
+            self.written: list[UsageBucket] = []
+            self._sample_added = False
+
+        def write_usage(self, buckets: Sequence[UsageBucket]) -> None:
+            self.written.extend(buckets)
+            if not self._sample_added:
+                self._sample_added = True
+                clock.advance(5)
+                tracker.sample(ContextState.FREE)
+
+    writer = SamplingWriter()
+    assert tracker.flush(writer)
+    assert sum(bucket.active_s for bucket in writer.written) == 5
+    assert tracker.buckets[0].active_s == 5
+    assert tracker.flush(writer)
+    assert sum(bucket.active_s for bucket in writer.written) == 10
+    assert tracker.buckets == {}

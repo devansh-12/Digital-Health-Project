@@ -1,11 +1,13 @@
 """Provide settings and break data access repositories."""
 
 import sqlite3
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
 from screensense.core.config import Settings, SettingsKey
 from screensense.core.context import ContextRule
+from screensense.core.tracker import UsageBucket
 
 
 class BreakKind(StrEnum):
@@ -241,3 +243,80 @@ class BreaksRepository:
             outcome=(BreakOutcome(str(outcome_value)) if outcome_value is not None else None),
             duration_s=int(row[5]) if row[5] is not None else None,
         )
+
+
+class UsageHourlyRepository:
+    """Atomically upsert additive usage deltas by hour."""
+
+    def __init__(
+        self,
+        connection: sqlite3.Connection | None = None,
+        *,
+        connection_factory: Callable[[], sqlite3.Connection] | None = None,
+    ) -> None:
+        """Use a same-thread connection or a factory for worker-thread writes."""
+        if (connection is None) == (connection_factory is None):
+            raise ValueError("provide exactly one connection or connection_factory")
+        self._connection = connection
+        self._connection_factory = connection_factory
+
+    def write_usage(self, buckets: Sequence[UsageBucket]) -> None:
+        """Upsert a batch, opening the connection inside the calling thread if needed."""
+        if not buckets:
+            return
+        if self._connection is not None:
+            self._upsert(self._connection, buckets)
+            return
+        if self._connection_factory is None:
+            raise RuntimeError("No database connection is configured")
+        connection = self._connection_factory()
+        try:
+            self._upsert(connection, buckets)
+        finally:
+            connection.close()
+
+    def upsert(self, buckets: Sequence[UsageBucket]) -> None:
+        """Public alias for writing one atomic batch of usage deltas."""
+        self.write_usage(buckets)
+
+    @staticmethod
+    def _upsert(
+        connection: sqlite3.Connection, buckets: Sequence[UsageBucket]
+    ) -> None:
+        entries: list[tuple[int, int, int, int, int]] = []
+        for bucket in buckets:
+            if (
+                isinstance(bucket.hour_start, bool)
+                or not isinstance(bucket.hour_start, int)
+                or bucket.hour_start % 3_600 != 0
+            ):
+                raise ValueError("hour_start must be an integer Unix-hour boundary")
+            values = (
+                bucket.active_s,
+                bucket.idle_s,
+                bucket.fullscreen_s,
+                bucket.call_s,
+            )
+            if any(
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+                for value in values
+            ):
+                raise ValueError("usage counters must be non-negative integers")
+            entries.append((bucket.hour_start, *values))
+
+        with connection:
+            connection.executemany(
+                """
+                INSERT INTO usage_hourly (
+                    hour_start, active_s, idle_s, fullscreen_s, call_s
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(hour_start) DO UPDATE SET
+                    active_s = usage_hourly.active_s + excluded.active_s,
+                    idle_s = usage_hourly.idle_s + excluded.idle_s,
+                    fullscreen_s = usage_hourly.fullscreen_s + excluded.fullscreen_s,
+                    call_s = usage_hourly.call_s + excluded.call_s
+                """,
+                entries,
+            )

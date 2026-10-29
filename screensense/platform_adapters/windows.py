@@ -3,6 +3,7 @@
 
 import ctypes
 import logging
+import os
 import sys
 import threading
 from collections.abc import Callable
@@ -305,6 +306,21 @@ class WindowsAutostartProvider:
         return (
             _read_autostart_command(_AUTOSTART_VALUE_NAME) == self._command
         )
+
+
+class WindowsAppDataProvider:
+    """Resolve ScreenSense's per-user directory under Windows APPDATA."""
+
+    def application_data_dir(self) -> Path:
+        """Create and return `%APPDATA%/ScreenSense`."""
+        if sys.platform != "win32":
+            raise OSError("Windows app data paths are available only on Windows")
+        app_data = os.environ.get("APPDATA")
+        if not app_data:
+            raise OSError("APPDATA is not set")
+        directory = Path(app_data) / "ScreenSense"
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
 
 
 def is_fullscreen_rect(

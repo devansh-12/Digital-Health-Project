@@ -65,10 +65,10 @@ sequenceDiagram
 
 ## Verified implementation gaps
 
-- `screensense/app.py` currently creates the scheduler, event bus, overlay, and tray, but it does not create platform providers, `ContextEvaluator`, repositories, or a periodic timer that calls `Scheduler.tick`.
+- `screensense/app.py` creates the event bus, scheduler, overlay, tray, local database/repositories, tracker, 60-second flush controller, and Windows power listener. It still does not instantiate idle/window providers or `ContextEvaluator`, schedule 5-second tracker samples, or run a periodic timer that calls `Scheduler.tick`.
 - `ContextEvaluator` publishes `ContextChanged`; no current subscriber converts that event into a scheduler tick.
-- The scheduler accepts an optional breaks repository and records suppression/natural breaks when one is supplied. The app does not currently supply one.
-- The Qt event bridge already queues scheduler UI events to the Qt thread; the Windows power provider's callbacks need the platform event bridge before any UI-thread consumer handles them.
+- The scheduler receives a breaks repository from `app.py` and records suppression/natural breaks. Usage writes use a fresh SQLite connection on the worker thread.
+- The Qt event bridges queue scheduler UI and Windows power events to the Qt thread; power events pause/resume tracker sampling and force a synchronous flush on lock/sleep.
 - There is no Phase 2 usage tracker or `usage_hourly` writer yet; those are covered by chunks 2.4a–2.4c.
 
 These gaps are intentionally left for their later runbook chunks or app integration; the diagram labels all expected-but-unwired calls.

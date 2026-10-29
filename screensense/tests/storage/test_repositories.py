@@ -7,6 +7,7 @@ from screensense.core.config import Settings
 from screensense.core.context import ContextRule, ContextState
 from screensense.core.events import EventBus, ShowPrompt
 from screensense.core.scheduler import Scheduler
+from screensense.core.tracker import UsageBucket
 from screensense.storage.db import open_database
 from screensense.storage.repositories import (
     BreakKind,
@@ -14,6 +15,7 @@ from screensense.storage.repositories import (
     BreaksRepository,
     ContextRulesRepository,
     SettingsRepository,
+    UsageHourlyRepository,
 )
 
 
@@ -180,3 +182,46 @@ def test_scheduler_records_natural_break(connection) -> None:
     assert records[0].kind is BreakKind.NATURAL
     assert records[0].outcome is BreakOutcome.COMPLETED
     assert records[0].duration_s == 20
+
+
+def test_usage_hourly_repository_upsert_merges_partial_hours(connection) -> None:
+    """Add each partial hourly write into existing aggregate counters."""
+    repository = UsageHourlyRepository(connection)
+    repository.upsert([UsageBucket(3_600, active_s=5, idle_s=10)])
+    repository.upsert(
+        [
+            UsageBucket(3_600, active_s=7, fullscreen_s=3),
+            UsageBucket(7_200, call_s=11),
+        ]
+    )
+
+    rows = connection.execute(
+        """
+        SELECT hour_start, active_s, idle_s, fullscreen_s, call_s
+        FROM usage_hourly ORDER BY hour_start
+        """
+    ).fetchall()
+    assert [tuple(row) for row in rows] == [
+        (3_600, 12, 10, 3, 0),
+        (7_200, 0, 0, 0, 11),
+    ]
+
+
+def test_usage_hourly_repository_connection_factory_opens_and_closes(tmp_path) -> None:
+    """Open worker-owned database connections in the calling worker thread."""
+    database_path = tmp_path / "usage.sqlite3"
+    open_database(database_path).close()
+    repository = UsageHourlyRepository(
+        connection_factory=lambda: open_database(database_path)
+    )
+    repository.write_usage([UsageBucket(0, active_s=5)])
+
+    reader = open_database(database_path)
+    try:
+        row = reader.execute(
+            "SELECT active_s FROM usage_hourly WHERE hour_start = ?", (0,)
+        ).fetchone()
+        assert row is not None
+        assert row[0] == 5
+    finally:
+        reader.close()

@@ -73,3 +73,9 @@
 - **Files changed:** `screensense/core/tracker.py`, `screensense/tests/core/test_tracker.py`.
 - **Test result:** `ruff check .`, strict mypy on `screensense/core`, and full pytest pass (156 passed).
 - **Manual check:** none required for this deterministic aggregation logic.
+
+## 2.4c Batched writer thread + flush
+
+- **Files changed:** `screensense/core/tracker.py`, `screensense/platform_adapters/base.py`, `screensense/platform_adapters/stub.py`, `screensense/platform_adapters/windows.py`, `screensense/storage/repositories.py`, `screensense/ui/usage_flush.py`, `screensense/app.py`, `screensense/tests/core/test_tracker.py`, `screensense/tests/storage/test_repositories.py`, `screensense/tests/platform_adapters/test_stub.py`, `screensense/tests/platform_adapters/test_windows_power_autostart.py`, `screensense/tests/ui/test_usage_flush.py`, `docs/diagrams/example_day.md`.
+- **Test result:** `ruff check .`, strict mypy on `screensense/core`, and full pytest pass (162 passed).
+- **Manual check:** none beyond the 2.1d Windows power/autostart check already pending in this log; app wiring now flushes on exit and on sleep/lock, using worker-thread-owned SQLite connections.

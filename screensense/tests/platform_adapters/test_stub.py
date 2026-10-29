@@ -2,6 +2,7 @@
 
 from screensense.platform_adapters.base import PowerEvent, WindowInfo
 from screensense.platform_adapters.stub import (
+    StubAppDataProvider,
     StubAutostartProvider,
     StubIdleProvider,
     StubPowerProvider,
@@ -46,3 +47,11 @@ def test_stub_autostart_provider_tracks_changes() -> None:
     assert provider.is_enabled()
     provider.disable()
     assert not provider.is_enabled()
+
+
+def test_stub_app_data_provider_returns_path_without_creating_it(tmp_path) -> None:
+    """Return a caller-selected directory without making filesystem changes."""
+    directory = tmp_path / "screensense"
+
+    assert StubAppDataProvider(directory).application_data_dir() == directory
+    assert not directory.exists()

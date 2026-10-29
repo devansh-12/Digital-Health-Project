@@ -1,6 +1,7 @@
 """Provide controllable in-memory platform adapters for tests and demos."""
 
 from collections.abc import Callable
+from pathlib import Path
 
 from screensense.platform_adapters.base import PowerEvent, WindowInfo
 
@@ -76,3 +77,15 @@ class StubAutostartProvider:
     def is_enabled(self) -> bool:
         """Return the fake autostart state."""
         return self._enabled
+
+
+class StubAppDataProvider:
+    """Return a caller-selected app data directory for tests."""
+
+    def __init__(self, directory: Path) -> None:
+        """Initialize the fake path without creating or touching the filesystem."""
+        self._directory = directory
+
+    def application_data_dir(self) -> Path:
+        """Return the configured app data directory."""
+        return self._directory

@@ -5,6 +5,7 @@ import pytest
 from screensense.platform_adapters import windows
 from screensense.platform_adapters.base import PowerEvent
 from screensense.platform_adapters.windows import (
+    WindowsAppDataProvider,
     WindowsAutostartProvider,
     WindowsPowerProvider,
     power_event_for_message,
@@ -80,3 +81,16 @@ def test_windows_autostart_provider_uses_mockable_registry_helpers(
     provider.disable()
     assert not provider.is_enabled()
     assert writes == [("ScreenSense", '"C:\\ScreenSense.exe"'), ("ScreenSense", None)]
+
+
+def test_windows_app_data_provider_creates_per_user_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Resolve the local data directory beneath the mocked APPDATA path."""
+    monkeypatch.setattr(windows.sys, "platform", "win32")
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+
+    directory = WindowsAppDataProvider().application_data_dir()
+
+    assert directory == tmp_path / "ScreenSense"
+    assert directory.is_dir()

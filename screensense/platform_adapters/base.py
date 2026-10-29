@@ -3,6 +3,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 from typing import Protocol
 
 Rect = tuple[int, int, int, int]
@@ -65,3 +66,10 @@ class AutostartProvider(Protocol):
 
     def is_enabled(self) -> bool:
         """Return whether application autostart is enabled."""
+
+
+class AppDataProvider(Protocol):
+    """Resolve the user's local application data directory."""
+
+    def application_data_dir(self) -> Path:
+        """Create and return ScreenSense's per-user data directory."""
