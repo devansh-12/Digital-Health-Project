@@ -204,3 +204,33 @@ def test_work_hours_reject_invalid_days_and_empty_ranges() -> None:
         WorkHours(start=time(9), end=time(18), weekdays=frozenset({7}))
     with pytest.raises(ValueError, match="start before"):
         WorkHours(start=time(18), end=time(9))
+
+
+def test_process_rules_match_case_insensitively() -> None:
+    """Match persisted process names without depending on Windows casing."""
+    inputs = make_inputs(
+        window=WindowInfo("Game", "GAME.EXE", (0, 0, 1920, 1080), True),
+        rules={"game.exe": ContextRule.FULLSCREEN_OK},
+    )
+
+    assert context.evaluate(inputs) is ContextState.FREE
+
+
+def test_allow_rule_can_override_call_detection() -> None:
+    """Honor the explicit always-allow rule after higher-priority lock/time/idle checks."""
+    inputs = make_inputs(
+        window=WindowInfo("Zoom Meeting", "zoom.exe", (0, 0, 800, 600), False),
+        rules={"ZOOM.EXE": ContextRule.ALLOW},
+    )
+
+    assert context.evaluate(inputs) is ContextState.FREE
+
+
+def test_fullscreen_ok_rule_does_not_override_call_detection() -> None:
+    """Keep calls suppressed even when fullscreen reminders are allowed."""
+    inputs = make_inputs(
+        window=WindowInfo("Zoom Meeting", "zoom.exe", (0, 0, 1920, 1080), True),
+        rules={"zoom.exe": ContextRule.FULLSCREEN_OK},
+    )
+
+    assert context.evaluate(inputs) is ContextState.CALL

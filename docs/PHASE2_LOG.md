@@ -30,3 +30,10 @@
 - **Files changed:** `screensense/core/context.py`, `screensense/tests/core/test_context.py`.
 - **Test result:** `ruff check .` and strict mypy on `screensense/core` pass; full pytest has 28 expected failures because `evaluate` is not implemented and 100 passes.
 - **Manual check:** none required for this test-first chunk.
+
+## 2.2b Context evaluator (green)
+
+- **Files changed:** `screensense/core/context.py`, `screensense/tests/core/test_context.py`.
+- **Test result:** `ruff check .`, strict mypy on `screensense/core`, and full pytest pass (131 passed); `core/context.py` coverage is 100%.
+- **Manual check:** none required for this pure evaluator chunk.
+- **Rule assumption:** since the documented `ContextState` has no `DENIED` member, a per-process `deny` rule maps to `OUTSIDE_HOURS` as a suppressed context. Lock, work-hours, and idle checks take precedence over process rules.

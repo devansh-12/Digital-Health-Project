@@ -53,7 +53,7 @@ You will only ever type ONE line per step (see "Driver prompts"). Everything els
 - [x] 2.1c Windows foreground + fullscreen
 - [x] 2.1d Windows power events + autostart
 - [x] 2.2a Context types + decision-table tests (red)
-- [ ] 2.2b Context evaluator (green)
+- [x] 2.2b Context evaluator (green)
 - [ ] 2.2c Hysteresis + user rules
 - [ ] 2.3a Suppression/queue tests (red)
 - [ ] 2.3b Suppression/queue implementation (green)
