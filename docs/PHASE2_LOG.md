@@ -93,3 +93,10 @@
 - **Test result:** `ruff check .`, strict mypy on `screensense/core`, and full pytest pass (166 passed).
 - **Manual check:** open Settings from the tray; change weekdays and times, add/remove each rule type, restart and confirm values persist. Trigger a prompt and choose “Always allow here”; verify only the foreground executable name is written to `context_rules`, with no window title/path. The existing 2.1b–2.1d Windows checks remain pending.
 - **Assumptions:** work hours use local wall-clock weekdays and half-open ranges; an empty weekday selection disables the schedule. Rule matching uses the executable name only.
+
+## 2.7 Manual test matrix + gate check
+
+- **Files changed:** `docs/PHASE2_MANUAL_TEST_MATRIX.md`, `docs/PHASE2_RUNBOOK.md`, `docs/PHASE2_LOG.md`.
+- **Test result:** documentation-only; `ruff check .`, strict mypy on `screensense/core`, and full pytest pass (166 passed).
+- **Manual check:** pending. Run every checklist row on Windows 10 and Windows 11, record pass/fail, and measure every queued reminder from context-clear to overlay (must be ≤10 s). The Windows adapter checks from 2.1b–2.1d and the settings/manual verification from 2.6 are also pending.
+- **Gate:** `PHASES.md`: “Zero popups across the manual matrix; queued reminder shows ≤ 10 s after context clears.” The gate remains unverified until all matrix rows pass on target Windows versions with timing evidence.
