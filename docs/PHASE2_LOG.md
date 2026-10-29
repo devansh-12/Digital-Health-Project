@@ -67,3 +67,9 @@
 - **Files changed:** `.gitignore`, `screensense/core/tracker.py`, `screensense/tests/core/test_tracker.py`.
 - **Test result:** `ruff check .` and strict mypy on `screensense/core` pass; full pytest has 9 expected failures because `Tracker` and `longest_unbroken_active_stretch` are not implemented, with 147 passes.
 - **Manual check:** none required for this test-first aggregation chunk.
+
+## 2.4b Tracker aggregation + longest stretch (green)
+
+- **Files changed:** `screensense/core/tracker.py`, `screensense/tests/core/test_tracker.py`.
+- **Test result:** `ruff check .`, strict mypy on `screensense/core`, and full pytest pass (156 passed).
+- **Manual check:** none required for this deterministic aggregation logic.

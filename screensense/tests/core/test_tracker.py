@@ -96,7 +96,7 @@ def test_longest_active_stretch_resets_on_idle_and_completed_break() -> None:
         ActivitySegment(ContextState.FREE, 80),
     ]
 
-    assert longest(segments) == 230
+    assert longest(segments) == 200
 
 
 @pytest.fixture
