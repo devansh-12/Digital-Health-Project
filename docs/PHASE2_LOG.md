@@ -43,3 +43,9 @@
 - **Files changed:** `screensense/core/context.py`, `screensense/core/events.py`, `screensense/storage/repositories.py`, `screensense/tests/core/test_context.py`, `screensense/tests/storage/test_repositories.py`.
 - **Test result:** `ruff check .`, strict mypy on `screensense/core`, and full pytest pass (136 passed); `core/context.py` coverage is 97%.
 - **Manual check:** none required for this deterministic context wrapper.
+
+## 2.3a Suppression/queue tests (red)
+
+- **Files changed:** `screensense/tests/core/test_scheduler.py`.
+- **Test result:** `ruff check .` and strict mypy on `screensense/core` pass; full pytest has 2 expected failures (the queued-prompt recovery copy is not present yet) and 142 passes.
+- **Manual check:** none required for this test-first scheduler chunk.

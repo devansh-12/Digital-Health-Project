@@ -245,3 +245,109 @@ def test_active_break_does_not_count_time_as_work() -> None:
     scheduler.tick(ContextState.FREE)
     assert scheduler.state is State.PROMPTING
     assert prompts[-1].kind == "quick"
+
+
+@pytest.mark.parametrize("context", [ContextState.CALL, ContextState.FULLSCREEN])
+def test_queued_prompt_is_delivered_with_recovery_copy_within_ten_seconds(
+    context: ContextState,
+) -> None:
+    """Queue in a call/fullscreen context and deliver promptly after it clears."""
+    scheduler, clock, _, prompts, _, _ = make_scheduler(
+        Settings(work_interval_minutes=10)
+    )
+    clock.advance(10 * 60)
+    scheduler.tick(context)
+    assert scheduler.state is State.SUPPRESS
+    assert prompts == []
+
+    clock.advance(9)
+    scheduler.tick(ContextState.FREE)
+
+    assert scheduler.state is State.PROMPTING
+    assert len(prompts) == 1
+    assert getattr(prompts[0], "message", None) == (
+        "Meeting's over. Want a quick eye break?"
+    )
+
+
+def test_multiple_due_intervals_while_suppressed_keep_one_queued_prompt() -> None:
+    """Collapse many suppressed due intervals into one queued reminder."""
+    scheduler, clock, _, prompts, _, _ = make_scheduler(
+        Settings(work_interval_minutes=10)
+    )
+    scheduler.tick(ContextState.CALL)
+    clock.advance(40 * 60)
+    scheduler.tick(ContextState.CALL)
+    assert prompts == []
+
+    scheduler.tick(ContextState.FREE)
+
+    assert scheduler.state is State.PROMPTING
+    assert len(prompts) == 1
+
+
+@pytest.mark.parametrize("context", [ContextState.CALL, ContextState.FULLSCREEN])
+def test_work_timer_advances_but_prompt_waits_in_working_contexts(
+    context: ContextState,
+) -> None:
+    """Count call/fullscreen time as work while withholding the due prompt."""
+    scheduler, clock, _, prompts, _, _ = make_scheduler(
+        Settings(work_interval_minutes=10)
+    )
+    scheduler.tick(context)
+    clock.advance(10 * 60)
+    scheduler.tick(context)
+
+    assert scheduler.state is State.SUPPRESS
+    assert prompts == []
+
+
+@pytest.mark.parametrize("context", [ContextState.IDLE, ContextState.LOCKED])
+def test_idle_and_locked_time_do_not_advance_work_timer(
+    context: ContextState,
+) -> None:
+    """Pause accrued work while idle or locked, then resume remaining time."""
+    settings = Settings(work_interval_minutes=10)
+    if context is ContextState.IDLE:
+        settings = Settings(
+            work_interval_minutes=10,
+            quick_break_seconds=60,
+            idle_threshold_seconds=30,
+        )
+    scheduler, clock, _, prompts, _, _ = make_scheduler(settings)
+    clock.advance(5 * 60)
+    scheduler.tick(ContextState.FREE)
+    scheduler.tick(context)
+    clock.advance(2)
+    scheduler.tick(context)
+    scheduler.tick(ContextState.FREE)
+
+    clock.advance(5 * 60 - 1)
+    scheduler.tick(ContextState.FREE)
+    assert prompts == []
+    clock.advance(1)
+    scheduler.tick(ContextState.FREE)
+
+    assert len(prompts) == 1
+
+
+def test_idle_at_least_break_length_counts_natural_break_and_resets_timer() -> None:
+    """Count a sufficiently long idle period as a break and reset work progress."""
+    scheduler, clock, _, prompts, completed, _ = make_scheduler(
+        Settings(work_interval_minutes=10, idle_threshold_seconds=1)
+    )
+    clock.advance(9 * 60)
+    scheduler.tick(ContextState.FREE)
+    scheduler.tick(ContextState.IDLE)
+    clock.advance(19)
+    scheduler.tick(ContextState.IDLE)
+
+    assert completed == [BreakCompleted(kind="natural", duration_s=20)]
+    scheduler.tick(ContextState.FREE)
+    clock.advance(9 * 60)
+    scheduler.tick(ContextState.FREE)
+    assert prompts == []
+    clock.advance(60)
+    scheduler.tick(ContextState.FREE)
+
+    assert len(prompts) == 1
