@@ -1,6 +1,7 @@
 """Define and validate application settings."""
 
 from dataclasses import dataclass
+from datetime import time
 from enum import StrEnum
 from math import isfinite
 
@@ -16,6 +17,23 @@ class SettingsKey(StrEnum):
     SNOOZE_MINUTES = "snooze_minutes"
     SCREEN_GOAL_HOURS = "screen_goal_hours"
     YOGA_TARGET_PER_DAY = "yoga_target_per_day"
+    WORK_HOURS = "work_hours"
+
+
+@dataclass(frozen=True, slots=True)
+class WorkHours:
+    """Local weekday schedule; the end time is exclusive."""
+
+    start: time
+    end: time
+    weekdays: frozenset[int] = frozenset(range(5))
+
+    def __post_init__(self) -> None:
+        """Validate weekday indices and a non-empty same-day time range."""
+        if any(day < 0 or day > 6 for day in self.weekdays):
+            raise ValueError("weekdays must use datetime weekday values from 0 to 6")
+        if self.start >= self.end:
+            raise ValueError("work hours must start before they end on the same day")
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +48,7 @@ class Settings:
     snooze_minutes: int = 5
     screen_goal_hours: float = 8.0
     yoga_target_per_day: int = 3
+    work_hours: WorkHours | None = WorkHours(time(9), time(18))
 
     def __post_init__(self) -> None:
         """Reject values outside the supported settings ranges."""
@@ -56,7 +75,7 @@ class Settings:
         )
         self._validate_integer(SettingsKey.YOGA_TARGET_PER_DAY, self.yoga_target_per_day)
 
-    def to_mapping(self) -> dict[SettingsKey, int | float]:
+    def to_mapping(self) -> dict[SettingsKey, int | float | str]:
         """Return settings keyed by the stable enum values."""
         return {
             SettingsKey.WORK_INTERVAL_MINUTES: self.work_interval_minutes,
@@ -67,6 +86,15 @@ class Settings:
             SettingsKey.SNOOZE_MINUTES: self.snooze_minutes,
             SettingsKey.SCREEN_GOAL_HOURS: self.screen_goal_hours,
             SettingsKey.YOGA_TARGET_PER_DAY: self.yoga_target_per_day,
+            SettingsKey.WORK_HOURS: (
+                "null"
+                if self.work_hours is None
+                else (
+                    f"{self.work_hours.start.isoformat()}|"
+                    f"{self.work_hours.end.isoformat()}|"
+                    f"{','.join(str(day) for day in sorted(self.work_hours.weekdays))}"
+                )
+            ),
         }
 
     @staticmethod

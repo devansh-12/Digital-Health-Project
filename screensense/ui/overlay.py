@@ -97,6 +97,7 @@ class BreakOverlay(QWidget):
     snooze_requested = pyqtSignal()
     skip_requested = pyqtSignal()
     dismissed = pyqtSignal()
+    always_allow_here_requested = pyqtSignal(str)
 
     def __init__(self, clock: Clock, parent: QWidget | None = None) -> None:
         """Create a frameless, always-on-top reminder card using an injected clock."""
@@ -108,6 +109,7 @@ class BreakOverlay(QWidget):
         super().__init__(parent, flags)
         self._clock = clock
         self._countdown_started_at: float | None = None
+        self._current_process = ""
         self.setObjectName("breakOverlay")
         self.setAccessibleName("ScreenSense break reminder")
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -156,12 +158,33 @@ class BreakOverlay(QWidget):
         buttons.addWidget(self.skip_button, 1, 1)
         layout.addLayout(buttons)
 
+        context_actions = QHBoxLayout()
+        self.not_now_button = QPushButton("Not now", self)
+        self.always_allow_button = QPushButton("Always allow here", self)
+        self.always_allow_button.setEnabled(False)
+        self.always_allow_button.setAccessibleDescription(
+            "Allow reminders for this process name"
+        )
+        context_actions.addWidget(self.not_now_button)
+        context_actions.addWidget(self.always_allow_button)
+        layout.addLayout(context_actions)
+
     def _connect_actions(self) -> None:
         """Connect each button to its action signal and close the card."""
         self.eye_yoga_button.clicked.connect(self._request_eye_yoga)
         self.quick_break_button.clicked.connect(self._request_quick_break)
         self.snooze_button.clicked.connect(self._request_snooze)
         self.skip_button.clicked.connect(self._request_skip)
+        self.not_now_button.clicked.connect(self._dismiss)
+        self.always_allow_button.clicked.connect(self._allow_current_process)
+
+    def set_current_process(self, process: str | None) -> None:
+        """Set the in-memory executable name used by the allow action."""
+        normalized = (process or "").strip().casefold()
+        if any(separator in normalized for separator in ("/", "\\")):
+            normalized = ""
+        self._current_process = normalized
+        self.always_allow_button.setEnabled(bool(normalized))
 
     def show_prompt(self, event: ShowPrompt | None = None) -> None:
         """Reset the 20-second countdown and show the prompt without activation."""
@@ -241,4 +264,10 @@ class BreakOverlay(QWidget):
     def _request_skip(self) -> None:
         """Emit the skip action and close the card."""
         self.skip_requested.emit()
+        self.close()
+
+    def _allow_current_process(self) -> None:
+        """Request a process-name allow rule without retaining window metadata."""
+        if self._current_process:
+            self.always_allow_here_requested.emit(self._current_process)
         self.close()

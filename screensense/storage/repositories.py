@@ -3,9 +3,10 @@
 import sqlite3
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import time
 from enum import StrEnum
 
-from screensense.core.config import Settings, SettingsKey
+from screensense.core.config import Settings, SettingsKey, WorkHours
 from screensense.core.context import ContextRule
 from screensense.core.tracker import UsageBucket
 
@@ -52,7 +53,7 @@ class SettingsRepository:
         """Load saved values over defaults and validate the resulting settings."""
         defaults = Settings()
         default_values = defaults.to_mapping()
-        values: dict[SettingsKey, int | float] = dict(default_values)
+        values: dict[SettingsKey, int | float | str] = dict(default_values)
 
         rows = self._connection.execute("SELECT key, value FROM settings")
         for row in rows:
@@ -62,9 +63,14 @@ class SettingsRepository:
                 continue
             default_value = default_values[key]
             try:
-                values[key] = (
-                    float(row[1]) if isinstance(default_value, float) else int(row[1])
-                )
+                if key is SettingsKey.WORK_HOURS:
+                    values[key] = str(row[1])
+                else:
+                    values[key] = (
+                        float(row[1])
+                        if isinstance(default_value, float)
+                        else int(row[1])
+                    )
             except (TypeError, ValueError) as error:
                 raise ValueError(f"Invalid stored value for {key.value}") from error
 
@@ -77,7 +83,23 @@ class SettingsRepository:
             snooze_minutes=int(values[SettingsKey.SNOOZE_MINUTES]),
             screen_goal_hours=float(values[SettingsKey.SCREEN_GOAL_HOURS]),
             yoga_target_per_day=int(values[SettingsKey.YOGA_TARGET_PER_DAY]),
+            work_hours=self._parse_work_hours(str(values[SettingsKey.WORK_HOURS])),
         )
+
+    @staticmethod
+    def _parse_work_hours(value: str) -> WorkHours | None:
+        """Parse the compact persisted local work schedule."""
+        if value == "null":
+            return None
+        try:
+            start, end, weekdays = value.split("|")
+            return WorkHours(
+                start=time.fromisoformat(start),
+                end=time.fromisoformat(end),
+                weekdays=frozenset(int(day) for day in weekdays.split(",") if day),
+            )
+        except (TypeError, ValueError) as error:
+            raise ValueError("Invalid stored value for work_hours") from error
 
     def save(self, settings: Settings) -> None:
         """Persist every validated setting in one transaction."""

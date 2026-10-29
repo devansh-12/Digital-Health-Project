@@ -1,5 +1,7 @@
 """Marshal pure-Python scheduler events onto the Qt UI thread."""
 
+from collections.abc import Callable
+
 from PyQt6.QtCore import QObject, Qt, pyqtSignal, pyqtSlot
 
 from screensense.core.events import (
@@ -25,6 +27,8 @@ class SchedulerUiBridge(QObject):
         scheduler: Scheduler,
         overlay: BreakOverlay,
         tray: ScreenSenseTray,
+        current_process: Callable[[], str | None] | None = None,
+        allow_process: Callable[[str], None] | None = None,
         parent: QObject | None = None,
     ) -> None:
         """Subscribe to core events and connect overlay actions."""
@@ -32,6 +36,8 @@ class SchedulerUiBridge(QObject):
         self._scheduler = scheduler
         self._overlay = overlay
         self._tray = tray
+        self._current_process = current_process
+        self._allow_process = allow_process
         self._closed = False
         self.event_received.connect(
             self._handle_event, Qt.ConnectionType.QueuedConnection
@@ -46,6 +52,8 @@ class SchedulerUiBridge(QObject):
         overlay.quick_break_requested.connect(self._start_quick_break)
         overlay.snooze_requested.connect(self._snooze)
         overlay.skip_requested.connect(scheduler.skip)
+        if allow_process is not None:
+            overlay.always_allow_here_requested.connect(allow_process)
 
     def close(self) -> None:
         """Remove subscriptions and signal connections."""
@@ -58,6 +66,8 @@ class SchedulerUiBridge(QObject):
         self._overlay.quick_break_requested.disconnect(self._start_quick_break)
         self._overlay.snooze_requested.disconnect(self._snooze)
         self._overlay.skip_requested.disconnect(self._scheduler.skip)
+        if self._allow_process is not None:
+            self._overlay.always_allow_here_requested.disconnect(self._allow_process)
         self._closed = True
 
     def _queue_event(self, event: object) -> None:
@@ -70,6 +80,8 @@ class SchedulerUiBridge(QObject):
         if self._closed:
             return
         if isinstance(event, ShowPrompt):
+            if self._current_process is not None:
+                self._overlay.set_current_process(self._current_process())
             self._overlay.show_prompt(event)
             self._tray.set_status(TrayStatus.DUE)
         elif isinstance(event, (BreakCompleted, BreakSkipped)):

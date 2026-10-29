@@ -86,3 +86,10 @@
 - **Test result:** `ruff check .`, strict mypy on `screensense/core`, and full pytest pass (163 passed).
 - **Manual check:** none required for the fake-adapter integration scenario; the Windows-specific checks from 2.1b, 2.1c, and 2.1d remain pending.
 - **Persistence behavior:** a queued suppressed break remains suppressed if skipped; if the user completes it, that same row is finalized as completed. This corrects the shorthand statement in the 2.3b entry that all queued reminders remain suppressed after delivery.
+
+## 2.6 Settings hooks: work hours + allow/deny rules
+
+- **Files changed:** `screensense/core/config.py`, `screensense/core/context.py`, `screensense/storage/repositories.py`, `screensense/ui/settings.py`, `screensense/ui/overlay.py`, `screensense/ui/event_bridge.py`, `screensense/ui/tray.py`, `screensense/app.py`, `screensense/tests/core/test_config.py`, `screensense/tests/storage/test_repositories.py`, `screensense/tests/ui/test_overlay.py`, `screensense/tests/ui/test_settings.py`, `docs/PHASE2_RUNBOOK.md`, `docs/PHASE2_LOG.md`.
+- **Test result:** `ruff check .`, strict mypy on `screensense/core`, and full pytest pass (166 passed).
+- **Manual check:** open Settings from the tray; change weekdays and times, add/remove each rule type, restart and confirm values persist. Trigger a prompt and choose “Always allow here”; verify only the foreground executable name is written to `context_rules`, with no window title/path. The existing 2.1b–2.1d Windows checks remain pending.
+- **Assumptions:** work hours use local wall-clock weekdays and half-open ranges; an empty weekday selection disables the schedule. Rule matching uses the executable name only.

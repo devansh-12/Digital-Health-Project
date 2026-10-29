@@ -2,11 +2,12 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from datetime import datetime, time
+from datetime import datetime
 from enum import StrEnum
 from typing import Protocol
 
 from screensense.core.clock import Clock
+from screensense.core.config import WorkHours
 from screensense.core.events import ContextChanged, EventBus
 from screensense.platform_adapters.base import WindowInfo
 
@@ -29,22 +30,6 @@ class ContextRule(StrEnum):
     DENY = "deny"
     CALL = "call"
     FULLSCREEN_OK = "fullscreen_ok"
-
-
-@dataclass(frozen=True, slots=True)
-class WorkHours:
-    """Local weekday schedule; end time is exclusive."""
-
-    start: time
-    end: time
-    weekdays: frozenset[int] = frozenset(range(5))
-
-    def __post_init__(self) -> None:
-        """Validate weekday indices and a same-day non-empty time range."""
-        if any(day < 0 or day > 6 for day in self.weekdays):
-            raise ValueError("weekdays must use datetime weekday values from 0 to 6")
-        if self.start >= self.end:
-            raise ValueError("work hours must start before they end on the same day")
 
 
 @dataclass(frozen=True, slots=True)

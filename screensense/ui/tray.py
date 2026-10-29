@@ -24,11 +24,16 @@ class ScreenSenseTray:
     def __init__(
         self,
         on_quit: Callable[[], None],
+        on_settings: Callable[[], None] | None = None,
         parent: QObject | None = None,
     ) -> None:
         """Create a tray icon with a Quit action."""
         self._icon = QSystemTrayIcon(parent)
         self._menu = QMenu()
+        if on_settings is not None:
+            settings_action = QAction("Settings", self._menu)
+            settings_action.triggered.connect(lambda _checked=False: on_settings())
+            self._menu.addAction(settings_action)
         quit_action = QAction("Quit", self._menu)
         quit_action.triggered.connect(lambda _checked=False: on_quit())
         self._menu.addAction(quit_action)

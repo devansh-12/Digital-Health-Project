@@ -1,9 +1,11 @@
 """Tests for settings and break repositories using temporary databases."""
 
+from datetime import time
+
 import pytest
 
 from screensense.core.clock import FakeClock
-from screensense.core.config import Settings
+from screensense.core.config import Settings, WorkHours
 from screensense.core.context import ContextRule, ContextState
 from screensense.core.events import EventBus, ShowPrompt
 from screensense.core.scheduler import Scheduler
@@ -44,11 +46,20 @@ def test_settings_repository_round_trips_values(connection) -> None:
         snooze_minutes=7,
         screen_goal_hours=7.5,
         yoga_target_per_day=2,
+        work_hours=WorkHours(time(8, 30), time(17, 45), frozenset({0, 2, 4})),
     )
 
     repository.save(settings)
 
     assert repository.load() == settings
+
+
+def test_settings_repository_round_trips_disabled_work_hours(connection) -> None:
+    """Represent a disabled work schedule without retaining an old schedule."""
+    repository = SettingsRepository(connection)
+    repository.save(Settings(work_hours=None))
+
+    assert repository.load().work_hours is None
 
 
 def test_break_repository_creates_reads_and_updates_break(connection) -> None:

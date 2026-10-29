@@ -62,7 +62,7 @@ You will only ever type ONE line per step (see "Driver prompts"). Everything els
 - [x] 2.4b Tracker aggregation + longest stretch (green)
 - [x] 2.4c Batched writer thread + flush
 - [x] 2.5 Integration test: simulated 8-hour day
-- [ ] 2.6 Settings hooks: work hours + allow/deny rules
+- [x] 2.6 Settings hooks: work hours + allow/deny rules
 - [ ] 2.7 Manual test matrix + gate check
 - [ ] W Session wrap-up
 

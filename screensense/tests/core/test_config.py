@@ -1,10 +1,11 @@
 """Tests for application settings and validation."""
 
+from datetime import time
 from typing import Any
 
 import pytest
 
-from screensense.core.config import Settings, SettingsKey
+from screensense.core.config import Settings, SettingsKey, WorkHours
 
 
 def test_settings_use_memory_defaults() -> None:
@@ -19,6 +20,7 @@ def test_settings_use_memory_defaults() -> None:
     assert settings.snooze_minutes == 5
     assert settings.screen_goal_hours == 8
     assert settings.yoga_target_per_day == 3
+    assert settings.work_hours == WorkHours(time(9), time(18))
 
 
 def test_settings_mapping_uses_enum_keys() -> None:

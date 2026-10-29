@@ -54,6 +54,20 @@ def test_overlay_displays_queued_recovery_copy(overlay: BreakOverlay) -> None:
     assert overlay.prompt_label.text() == "Time to rest your eyes 👀"
 
 
+def test_always_allow_action_emits_only_current_process_name(
+    overlay: BreakOverlay,
+) -> None:
+    """Emit the in-memory executable name and keep paths unavailable."""
+    emitted: list[str] = []
+    overlay.always_allow_here_requested.connect(emitted.append)
+    overlay.set_current_process("editor.exe")
+    overlay.always_allow_button.click()
+
+    assert emitted == ["editor.exe"]
+    overlay.set_current_process(r"C:\Users\A\editor.exe")
+    assert not overlay.always_allow_button.isEnabled()
+
+
 def test_overlay_is_frameless_topmost_and_does_not_activate_on_show(
     overlay: BreakOverlay,
 ) -> None:
