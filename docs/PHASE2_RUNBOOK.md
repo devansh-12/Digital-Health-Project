@@ -57,7 +57,7 @@ You will only ever type ONE line per step (see "Driver prompts"). Everything els
 - [x] 2.2c Hysteresis + user rules
 - [x] 2.3a Suppression/queue tests (red)
 - [x] 2.3b Suppression/queue implementation (green)
-- [ ] 2.3c Example-day sequence diagram
+- [x] 2.3c Example-day sequence diagram
 - [ ] 2.4a Tracker tests (red)
 - [ ] 2.4b Tracker aggregation + longest stretch (green)
 - [ ] 2.4c Batched writer thread + flush

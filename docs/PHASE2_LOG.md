@@ -55,3 +55,9 @@
 - **Files changed:** `screensense/core/events.py`, `screensense/core/scheduler.py`, `screensense/storage/repositories.py`, `screensense/ui/overlay.py`, `screensense/tests/core/test_scheduler.py`, `screensense/tests/storage/test_repositories.py`, `screensense/tests/ui/test_overlay.py`.
 - **Test result:** `ruff check .`, strict mypy on `screensense/core`, and full pytest pass (147 passed).
 - **Manual check:** none required for this pure scheduler/persistence behavior; the copy is covered by the overlay test.
+
+## 2.3c Example-day sequence diagram
+
+- **Files changed:** `docs/diagrams/example_day.md`.
+- **Test result:** documentation-only chunk; `ruff check .`, strict mypy on `screensense/core`, and full pytest pass (147 passed).
+- **Manual check:** review the diagram and its marked wiring gaps before wiring the app.
