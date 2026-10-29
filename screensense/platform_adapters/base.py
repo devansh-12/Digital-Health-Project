@@ -44,6 +44,12 @@ class WindowProvider(Protocol):
 class PowerProvider(Protocol):
     """Publish sleep, resume, and session-lock transitions to a handler."""
 
+    def start(self) -> None:
+        """Start receiving native power and session events."""
+
+    def stop(self) -> None:
+        """Stop receiving native events and release platform resources."""
+
     def subscribe(self, handler: Callable[[PowerEvent], None]) -> Callable[[], None]:
         """Subscribe to power transitions and return an unsubscribe callback."""
 

@@ -36,6 +36,12 @@ class StubPowerProvider:
         """Initialize an empty power event subscriber list."""
         self._handlers: list[Callable[[PowerEvent], None]] = []
 
+    def start(self) -> None:
+        """Do nothing because fake events are driven explicitly."""
+
+    def stop(self) -> None:
+        """Do nothing because the fake owns no native resources."""
+
     def subscribe(self, handler: Callable[[PowerEvent], None]) -> Callable[[], None]:
         """Register a handler and return a callback that removes it."""
         self._handlers.append(handler)

@@ -51,7 +51,7 @@ You will only ever type ONE line per step (see "Driver prompts"). Everything els
 - [x] 2.1a Platform interfaces + stub
 - [x] 2.1b Windows idle provider
 - [x] 2.1c Windows foreground + fullscreen
-- [ ] 2.1d Windows power events + autostart
+- [x] 2.1d Windows power events + autostart
 - [ ] 2.2a Context types + decision-table tests (red)
 - [ ] 2.2b Context evaluator (green)
 - [ ] 2.2c Hysteresis + user rules
