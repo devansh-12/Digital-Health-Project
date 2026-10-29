@@ -11,3 +11,10 @@
 - **Files changed:** `screensense/platform_adapters/windows.py`, `screensense/tests/platform_adapters/test_windows_idle.py`.
 - **Test result:** `ruff check .`, strict mypy on `screensense/core`, and `PYTHONPATH=. pytest -q` pass (71 passed).
 - **Manual check (pending Windows):** run a short script that prints `WindowsIdleProvider().seconds_since_input()` once per second; confirm it rises while hands are off mouse/keyboard and resets close to zero after input.
+
+## 2.1c Windows foreground + fullscreen
+
+- **Files changed:** `screensense/platform_adapters/windows.py`, `screensense/tests/platform_adapters/test_windows_window.py`.
+- **Test result:** `ruff check .`, strict mypy on `screensense/core`, and `PYTHONPATH=. pytest -q` pass (88 passed).
+- **Manual check (pending Windows):** print foreground process and `is_fullscreen` while switching among a maximized browser, YouTube fullscreen via F11 and player control, and a PowerPoint slideshow. Repeat with a second monitor.
+- **Edge cases:** monitor bounds come from `MonitorFromWindow(..., MONITOR_DEFAULTTONEAREST)`; borderless games qualify when they cover the selected monitor without `WS_CAPTION`; captioned maximized windows do not. Exclusive-fullscreen mode depends on Windows exposing the app's top-level window. UWP apps may report a frame-host process name. Desktop/shell windows and process access failures return `None`.
