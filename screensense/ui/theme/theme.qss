@@ -1,0 +1,67 @@
+/* ScreenSense tokens from STYLE_GUIDE.md: bg #F7FAF9, surface #FFFFFF,
+   text #14201E, muted #5B6B68, primary #2A9D8F, accent #E9C46A,
+   calm #A8DADC, warn #F4A261, danger #E76F51. */
+
+QWidget#breakOverlay {
+    background-color: #FFFFFF;
+    color: #14201E;
+    border: 1px solid #D7E1DE;
+    border-radius: 12px;
+}
+
+QLabel#promptTitle {
+    color: #14201E;
+    font-family: Inter, "Segoe UI", system-ui;
+    font-size: 20px;
+    font-weight: 600;
+}
+
+QWidget#countdownRing {
+    background-color: transparent;
+    color: #14201E;
+}
+
+QPushButton {
+    min-height: 40px;
+    padding: 0 12px;
+    border: 1px solid #5B6B68;
+    border-radius: 8px;
+    background-color: #F7FAF9;
+    color: #14201E;
+    font-family: Inter, "Segoe UI", system-ui;
+    font-size: 14px;
+}
+
+QPushButton:hover {
+    background-color: #E8F2EF;
+}
+
+QPushButton:focus {
+    border: 2px solid #176B61;
+}
+
+QPushButton#eyeYogaButton {
+    border-color: #2A9D8F;
+    background-color: #2A9D8F;
+    color: #14201E;
+    font-weight: 600;
+}
+
+QPushButton#eyeYogaButton:hover {
+    background-color: #3BB8A8;
+}
+
+QPushButton#eyeYogaButton:focus {
+    border: 2px solid #14201E;
+}
+
+QMenu {
+    background-color: #FFFFFF;
+    color: #14201E;
+    border: 1px solid #D7E1DE;
+}
+
+QMenu::item:selected {
+    background-color: #A8DADC;
+    color: #14201E;
+}
