@@ -28,3 +28,25 @@ def test_tray_status_can_show_active_due_and_suppressed_states(
     tray.set_status(TrayStatus.SUPPRESSED)
     assert tray.status is TrayStatus.SUPPRESSED
     tray.close()
+
+
+def test_tray_menu_actions(app: QApplication) -> None:
+    """Verify tray menu actions trigger the configured callbacks."""
+    yoga_called = []
+    settings_called = []
+    quit_called = []
+    tray = ScreenSenseTray(
+        on_quit=lambda: quit_called.append(True),
+        on_settings=lambda: settings_called.append(True),
+        on_eye_yoga=lambda: yoga_called.append(True),
+        parent=app,
+    )
+    actions = tray._menu.actions()
+    assert len(actions) == 3
+    assert actions[0].text() == "Start Eye Yoga (60s)"
+    assert actions[1].text() == "Settings"
+    assert actions[2].text() == "Quit"
+    actions[0].trigger()
+    assert yoga_called == [True]
+    tray.close()
+

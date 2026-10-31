@@ -353,3 +353,26 @@ def test_idle_at_least_break_length_counts_natural_break_and_resets_timer() -> N
     scheduler.tick(ContextState.FREE)
 
     assert len(prompts) == 1
+
+
+def test_on_demand_break_and_cancel() -> None:
+    """Allow starting an on-demand break from working state and cancelling it."""
+    scheduler, clock, _, prompts, completed, _ = make_scheduler(
+        Settings(work_interval_minutes=10)
+    )
+    assert scheduler.state is State.WORKING
+
+    # Start explicit on-demand yoga break
+    scheduler.start_break(kind="yoga")
+    assert scheduler.state is State.ON_BREAK
+
+    # Cancel break returns to working
+    scheduler.cancel_break()
+    assert scheduler.state is State.WORKING
+
+    # Start on-demand and complete it
+    scheduler.start_break(kind="yoga")
+    scheduler.complete_break(duration_s=60)
+    assert scheduler.state is State.WORKING
+    assert completed == [BreakCompleted(kind="yoga", duration_s=60)]
+

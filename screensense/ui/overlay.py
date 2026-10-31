@@ -32,14 +32,19 @@ from screensense.ui.theme import MUTED, PRIMARY, TEXT
 class CountdownRing(QWidget):
     """Paint a numeric countdown with a shrinking progress ring."""
 
-    def __init__(self, total_seconds: float, parent: QWidget | None = None) -> None:
-        """Create a countdown ring for a positive duration."""
+    def __init__(
+        self,
+        total_seconds: float,
+        parent: QWidget | None = None,
+        text_color: str | None = None,
+    ) -> None:
         super().__init__(parent)
         if total_seconds <= 0:
             raise ValueError("total_seconds must be positive")
         self._total_seconds = total_seconds
         self._remaining_seconds = total_seconds
         self._last_announced_second = ceil(total_seconds)
+        self._text_color = text_color
         self.setObjectName("countdownRing")
         self.setAccessibleName("Break reminder countdown")
         self.setFixedSize(72, 72)
@@ -49,6 +54,15 @@ class CountdownRing(QWidget):
     def seconds_remaining(self) -> int:
         """Return the rounded-up number of seconds remaining."""
         return ceil(self._remaining_seconds)
+
+    def reset(self, total_seconds: float) -> None:
+        if total_seconds <= 0:
+            raise ValueError("total_seconds must be positive")
+        self._total_seconds = total_seconds
+        self._remaining_seconds = total_seconds
+        self._last_announced_second = ceil(total_seconds)
+        self._update_accessible_description()
+        self.update()
 
     def set_remaining_seconds(self, seconds: float) -> None:
         """Update the countdown value and repaint the ring."""
@@ -74,7 +88,7 @@ class CountdownRing(QWidget):
         painter.setPen(progress_pen)
         painter.drawArc(rect, 90 * 16, -round(360 * 16 * fraction))
 
-        painter.setPen(QColor(TEXT))
+        painter.setPen(QColor(self._text_color or TEXT))
         painter.drawText(
             self.rect(),
             Qt.AlignmentFlag.AlignCenter,

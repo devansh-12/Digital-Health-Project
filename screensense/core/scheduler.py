@@ -164,14 +164,22 @@ class Scheduler:
         self._begin_work_interval()
 
     def start_break(self, kind: BreakKind | None = None) -> None:
-        """Start the break selected by the current prompt."""
-        self._require_state(State.PROMPTING)
-        selected_kind = kind or self._current_prompt_kind()
+        """Start the break selected by the current prompt, or an on-demand break."""
+        if kind is None:
+            self._require_state(State.PROMPTING)
+            selected_kind = self._current_prompt_kind()
+        else:
+            selected_kind = kind
         if selected_kind not in ("quick", "long", "yoga"):
             raise ValueError("A user-started break must be quick, long, or yoga")
         self._active_break_kind = selected_kind
         self._state = State.ON_BREAK
         self._last_tick = self._clock.monotonic()
+
+    def cancel_break(self) -> None:
+        """Cancel an active break without recording completion."""
+        self._require_state(State.ON_BREAK)
+        self._begin_work_interval()
 
     def complete_break(self, duration_s: int) -> None:
         """Record completion and begin a fresh work interval."""

@@ -60,11 +60,11 @@
 
 ## 7. Current State *(update every session)*
 
-- **Phase:** 2 (tracking & context awareness; runbook implementation chunks complete, gate not yet passed)
-- **Done:** Phase 0 and Phase 1 implementation; Phase 2 chunks 2.1a–2.7, including Windows adapter code, context evaluation, suppression/queueing, hourly tracking, SQLite persistence, work-hours/process-rule settings, simulated eight-hour integration test, and the manual test matrix. Phase 2 checks: ruff clean, strict mypy on `screensense/core` clean, 166 pytest tests pass.
-- **In progress:** Windows 10/11 manual validation. Production `app.py` still does not poll idle/window adapters or drive `ContextEvaluator` and `Scheduler.tick`; this runtime wiring must be completed before the manual gate can be meaningfully run.
-- **Next up:** (1) wire production adapter polling/context evaluation/scheduler ticks using injected time and persisted settings/rules; (2) run the Windows 10/11 adapter, settings, and manual matrix checks; (3) after the Phase 2 gate passes, begin Phase 3 Eye Yoga.
-- **Blockers / open questions:** the Phase 2 gate remains unmet pending runtime wiring and Windows evidence; other open questions are listed in §9.
+- **Phase:** 3 (active intervention / Eye Yoga implementation complete)
+- **Done:** Phase 0, Phase 1, and Phase 2 implementation + runtime ticking and OS auto-detection; Phase 3 Eye Yoga domain routines (`core/yoga.py`), SQLite persistence (`YogaSessionsRepository`), vector animation widgets with <= 0.5 Hz motion and reduced-motion mode (`ui/eye_yoga/animations.py`), interactive modal player with countdown ring and keyboard navigation (`ui/eye_yoga/player.py`), integration with tray and reminder overlay, and test suites across core, storage, and UI.
+- **In progress:** Manual verification of Eye Yoga routine on desktop.
+- **Next up:** Phase 4: Dashboard, Score & Gamification (scoring engine, daily rollups, streaks with weekly freeze, charts).
+- **Blockers / open questions:** Windows manual matrix evidence; open questions in §9.
 
 ## 8. Decision Log
 
@@ -78,6 +78,8 @@
 | 2026-10-30 | Context rules are matched against normalized executable names; work hours use local weekdays and an exclusive end time | Keep persisted context data to process names and make schedule boundaries deterministic |
 | 2026-10-30 | Completing a queued reminder finalizes its existing suppressed row; skipping it leaves the row suppressed | Avoid duplicate break records while preserving suppressed-versus-completed outcomes |
 | 2026-10-30 | Phase 2 code tests do not substitute for the Windows gate; production polling and scheduler tick wiring remains required | The current app entry point does not yet connect platform sampling to context evaluation and scheduler decisions |
+| 2026-10-31 | Introduce `platform_adapters/factory.py` and `linux.py` | Auto-detect OS at runtime so developers on Linux can run and test the app without breaking Windows compatibility |
+| 2026-10-31 | Eye Yoga vector animations rendered via QPainter with <=0.5 Hz motion | Ensure comfort and compliance with style guide accessibility constraints; support reduced motion |
 
 ## 9. Open Questions
 

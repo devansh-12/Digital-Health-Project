@@ -25,19 +25,39 @@ class ScreenSenseTray:
         self,
         on_quit: Callable[[], None],
         on_settings: Callable[[], None] | None = None,
+        on_eye_yoga: Callable[[], None] | None = None,
+        on_dashboard: Callable[[], None] | None = None,
         parent: QObject | None = None,
     ) -> None:
-        """Create a tray icon with a Quit action."""
         self._icon = QSystemTrayIcon(parent)
         self._menu = QMenu()
+        if on_dashboard is not None:
+            dashboard_action = QAction("Open Dashboard", self._menu)
+            dashboard_action.triggered.connect(lambda _checked=False: on_dashboard())
+            self._menu.addAction(dashboard_action)
+            self._menu.addSeparator()
+        if on_eye_yoga is not None:
+            eye_yoga_action = QAction("Start Eye Yoga (60s)", self._menu)
+            eye_yoga_action.triggered.connect(lambda _checked=False: on_eye_yoga())
+            self._menu.addAction(eye_yoga_action)
         if on_settings is not None:
             settings_action = QAction("Settings", self._menu)
             settings_action.triggered.connect(lambda _checked=False: on_settings())
             self._menu.addAction(settings_action)
+        self._menu.addSeparator()
         quit_action = QAction("Quit", self._menu)
         quit_action.triggered.connect(lambda _checked=False: on_quit())
         self._menu.addAction(quit_action)
         self._icon.setContextMenu(self._menu)
+        if on_dashboard is not None:
+            self._icon.activated.connect(
+                lambda reason: on_dashboard()
+                if reason in (
+                    QSystemTrayIcon.ActivationReason.DoubleClick,
+                    QSystemTrayIcon.ActivationReason.Trigger,
+                )
+                else None
+            )
         self._status = TrayStatus.ACTIVE
         self.set_status(TrayStatus.ACTIVE)
         self._icon.show()

@@ -29,6 +29,7 @@ class SchedulerUiBridge(QObject):
         tray: ScreenSenseTray,
         current_process: Callable[[], str | None] | None = None,
         allow_process: Callable[[str], None] | None = None,
+        on_start_yoga: Callable[[], None] | None = None,
         parent: QObject | None = None,
     ) -> None:
         """Subscribe to core events and connect overlay actions."""
@@ -38,6 +39,7 @@ class SchedulerUiBridge(QObject):
         self._tray = tray
         self._current_process = current_process
         self._allow_process = allow_process
+        self._on_start_yoga = on_start_yoga
         self._closed = False
         self.event_received.connect(
             self._handle_event, Qt.ConnectionType.QueuedConnection
@@ -92,6 +94,8 @@ class SchedulerUiBridge(QObject):
         """Start the Eye Yoga break and restore the tray's active status."""
         self._scheduler.start_break(kind="yoga")
         self._tray.set_status(TrayStatus.ACTIVE)
+        if self._on_start_yoga is not None:
+            self._on_start_yoga()
 
     def _start_quick_break(self) -> None:
         """Start a quick break and restore the tray's active status."""

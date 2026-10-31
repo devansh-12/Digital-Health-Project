@@ -8,6 +8,7 @@ from enum import StrEnum
 
 from screensense.core.config import Settings, SettingsKey, WorkHours
 from screensense.core.context import ContextRule
+from screensense.core.gamification import StreakState
 from screensense.core.tracker import UsageBucket
 
 
@@ -303,6 +304,36 @@ class BreaksRepository:
                 ),
             )
 
+    def count_for_range(self, start_ts: int, end_ts: int) -> tuple[int, int]:
+        cursor = self._connection.execute(
+            """
+            SELECT
+                SUM(CASE WHEN outcome = 'completed' THEN 1 ELSE 0 END),
+                COUNT(*)
+            FROM breaks
+            WHERE due_at >= ? AND due_at < ?
+            """,
+            (start_ts, end_ts),
+        )
+        row = cursor.fetchone()
+        if not row or row[1] is None:
+            return 0, 0
+        completed = int(row[0]) if row[0] is not None else 0
+        due = int(row[1]) if row[1] is not None else 0
+        return completed, due
+
+    def list_for_range(self, start_ts: int, end_ts: int) -> list[BreakRecord]:
+        rows = self._connection.execute(
+            """
+            SELECT id, due_at, shown_at, kind, outcome, duration_s
+            FROM breaks
+            WHERE due_at >= ? AND due_at < ?
+            ORDER BY due_at ASC
+            """,
+            (start_ts, end_ts),
+        )
+        return [self._to_record(row) for row in rows]
+
     @staticmethod
     def _to_record(row: sqlite3.Row | tuple[object, ...]) -> BreakRecord:
         outcome_value = row[4]
@@ -350,6 +381,53 @@ class UsageHourlyRepository:
         """Public alias for writing one atomic batch of usage deltas."""
         self.write_usage(buckets)
 
+    def get_active_seconds_for_range(self, start_ts: int, end_ts: int) -> int:
+        conn = self._connection
+        should_close = False
+        if conn is None:
+            if self._connection_factory is None:
+                return 0
+            conn = self._connection_factory()
+            should_close = True
+        try:
+            cursor = conn.execute(
+                """
+                SELECT SUM(active_s) FROM usage_hourly
+                WHERE hour_start >= ? AND hour_start < ?
+                """,
+                (start_ts, end_ts),
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+        finally:
+            if should_close:
+                conn.close()
+
+    def get_hourly_breakdown_for_range(
+        self, start_ts: int, end_ts: int
+    ) -> list[tuple[int, int, int]]:
+        conn = self._connection
+        should_close = False
+        if conn is None:
+            if self._connection_factory is None:
+                return []
+            conn = self._connection_factory()
+            should_close = True
+        try:
+            cursor = conn.execute(
+                """
+                SELECT hour_start, active_s, idle_s
+                FROM usage_hourly
+                WHERE hour_start >= ? AND hour_start < ?
+                ORDER BY hour_start ASC
+                """,
+                (start_ts, end_ts),
+            )
+            return [(int(r[0]), int(r[1]), int(r[2])) for r in cursor.fetchall()]
+        finally:
+            if should_close:
+                conn.close()
+
     @staticmethod
     def _upsert(
         connection: sqlite3.Connection, buckets: Sequence[UsageBucket]
@@ -391,3 +469,240 @@ class UsageHourlyRepository:
                 """,
                 entries,
             )
+
+
+@dataclass(frozen=True, slots=True)
+class YogaSessionRecord:
+    """A stored record of an Eye Yoga session."""
+
+    id: int
+    started_at: int
+    steps_completed: int
+    total_steps: int
+    duration_s: int
+
+
+class YogaSessionsRepository:
+    """Store and query Eye Yoga sessions using the SQLite database."""
+
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        """Create a repository backed by an open database connection."""
+        self._connection = connection
+
+    def record_session(
+        self,
+        started_at: int,
+        steps_completed: int,
+        total_steps: int,
+        duration_s: int,
+    ) -> int:
+        """Insert an Eye Yoga session and return its database identifier."""
+        with self._connection:
+            cursor = self._connection.execute(
+                """
+                INSERT INTO yoga_sessions (
+                    started_at, steps_completed, total_steps, duration_s
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (started_at, steps_completed, total_steps, duration_s),
+            )
+            return int(cursor.lastrowid)
+
+    def count_today(self, day_start_timestamp: int) -> int:
+        """Return the count of completed sessions started on or after day_start_timestamp."""
+        cursor = self._connection.execute(
+            """
+            SELECT COUNT(*) FROM yoga_sessions
+            WHERE started_at >= ? AND steps_completed = total_steps
+            """,
+            (day_start_timestamp,),
+        )
+        row = cursor.fetchone()
+        return int(row[0]) if row else 0
+
+    def count_for_range(self, start_ts: int, end_ts: int) -> int:
+        cursor = self._connection.execute(
+            """
+            SELECT COUNT(*) FROM yoga_sessions
+            WHERE started_at >= ? AND started_at < ? AND steps_completed = total_steps
+            """,
+            (start_ts, end_ts),
+        )
+        row = cursor.fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
+
+    def list_recent(self, limit: int = 10) -> list[YogaSessionRecord]:
+        """Return recently recorded sessions ordered by start time descending."""
+        cursor = self._connection.execute(
+            """
+            SELECT id, started_at, steps_completed, total_steps, duration_s
+            FROM yoga_sessions
+            ORDER BY started_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        return [
+            YogaSessionRecord(
+                id=row[0],
+                started_at=row[1],
+                steps_completed=row[2],
+                total_steps=row[3],
+                duration_s=row[4],
+            )
+            for row in cursor.fetchall()
+        ]
+
+
+@dataclass(frozen=True, slots=True)
+class DailyScoreRecord:
+    day: str
+    score: int
+    break_c: float
+    yoga_c: float
+    screen_c: float
+    blink_c: float
+    counted_for_streak: int
+
+
+class DailyScoresRepository:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
+
+    def save_score(self, record: DailyScoreRecord) -> None:
+        with self._connection:
+            self._connection.execute(
+                """
+                INSERT INTO daily_scores (
+                    day, score, break_c, yoga_c, screen_c, blink_c, counted_for_streak
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(day) DO UPDATE SET
+                    score = excluded.score,
+                    break_c = excluded.break_c,
+                    yoga_c = excluded.yoga_c,
+                    screen_c = excluded.screen_c,
+                    blink_c = excluded.blink_c,
+                    counted_for_streak = excluded.counted_for_streak
+                """,
+                (
+                    record.day,
+                    record.score,
+                    record.break_c,
+                    record.yoga_c,
+                    record.screen_c,
+                    record.blink_c,
+                    record.counted_for_streak,
+                ),
+            )
+
+    def get_score(self, day: str) -> DailyScoreRecord | None:
+        cursor = self._connection.execute(
+            """
+            SELECT day, score, break_c, yoga_c, screen_c, blink_c, counted_for_streak
+            FROM daily_scores
+            WHERE day = ?
+            """,
+            (day,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return DailyScoreRecord(
+            day=str(row[0]),
+            score=int(row[1]),
+            break_c=float(row[2]),
+            yoga_c=float(row[3]),
+            screen_c=float(row[4]),
+            blink_c=float(row[5]),
+            counted_for_streak=int(row[6]),
+        )
+
+    def list_recent(self, limit: int = 30) -> list[DailyScoreRecord]:
+        cursor = self._connection.execute(
+            """
+            SELECT day, score, break_c, yoga_c, screen_c, blink_c, counted_for_streak
+            FROM daily_scores
+            ORDER BY day DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        return [
+            DailyScoreRecord(
+                day=str(row[0]),
+                score=int(row[1]),
+                break_c=float(row[2]),
+                yoga_c=float(row[3]),
+                screen_c=float(row[4]),
+                blink_c=float(row[5]),
+                counted_for_streak=int(row[6]),
+            )
+            for row in cursor.fetchall()
+        ]
+
+
+class StreaksRepository:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
+
+    def load(self) -> StreakState:
+        cursor = self._connection.execute(
+            "SELECT current, best, last_counted_day, freeze_week FROM streaks WHERE id = 1"
+        )
+        row = cursor.fetchone()
+        if not row:
+            return StreakState(
+                current=0,
+                best=0,
+                last_counted_day=None,
+                freeze_week=None,
+            )
+        return StreakState(
+            current=int(row[0]),
+            best=int(row[1]),
+            last_counted_day=str(row[2]) if row[2] is not None else None,
+            freeze_week=str(row[3]) if row[3] is not None else None,
+        )
+
+    def save(self, state: StreakState) -> None:
+        with self._connection:
+            self._connection.execute(
+                """
+                INSERT INTO streaks (id, current, best, last_counted_day, freeze_week)
+                VALUES (1, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    current = excluded.current,
+                    best = excluded.best,
+                    last_counted_day = excluded.last_counted_day,
+                    freeze_week = excluded.freeze_week
+                """,
+                (
+                    state.current,
+                    state.best,
+                    state.last_counted_day,
+                    state.freeze_week,
+                ),
+            )
+
+
+class BadgesRepository:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
+
+    def award_badge(self, code: str, earned_at: int) -> bool:
+        with self._connection:
+            cursor = self._connection.execute(
+                "INSERT INTO badges (code, earned_at) VALUES (?, ?) ON CONFLICT(code) DO NOTHING",
+                (code, earned_at),
+            )
+            return cursor.rowcount > 0
+
+    def list_earned(self) -> list[tuple[str, int]]:
+        cursor = self._connection.execute(
+            "SELECT code, earned_at FROM badges ORDER BY earned_at ASC"
+        )
+        return [(str(row[0]), int(row[1])) for row in cursor.fetchall()]
+
+    def earned_codes(self) -> set[str]:
+        cursor = self._connection.execute("SELECT code FROM badges")
+        return {str(row[0]) for row in cursor.fetchall()}

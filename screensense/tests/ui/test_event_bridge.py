@@ -71,3 +71,33 @@ def test_snooze_action_updates_scheduler_and_tray(app: QApplication) -> None:
     bridge.close()
     tray.close()
     overlay.close()
+
+
+def test_eye_yoga_button_triggers_on_start_yoga(app: QApplication) -> None:
+    """Clicking Eye Yoga button starts yoga break and invokes on_start_yoga."""
+    event_bus = EventBus()
+    clock = FakeClock()
+    scheduler = Scheduler(Settings(work_interval_minutes=10), clock, event_bus)
+    overlay = BreakOverlay(clock)
+    tray = ScreenSenseTray(lambda: None, parent=app)
+    yoga_called = []
+    bridge = SchedulerUiBridge(
+        event_bus,
+        scheduler,
+        overlay,
+        tray,
+        on_start_yoga=lambda: yoga_called.append(True),
+        parent=app,
+    )
+
+    clock.advance(10 * 60)
+    scheduler.tick(ContextState.FREE)
+    overlay.eye_yoga_button.click()
+
+    assert scheduler.state is State.ON_BREAK
+    assert yoga_called == [True]
+
+    bridge.close()
+    tray.close()
+    overlay.close()
+
