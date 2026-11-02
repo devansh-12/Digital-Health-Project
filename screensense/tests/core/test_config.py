@@ -21,6 +21,7 @@ def test_settings_use_memory_defaults() -> None:
     assert settings.screen_goal_hours == 8
     assert settings.yoga_target_per_day == 3
     assert settings.work_hours == WorkHours(time(9), time(18))
+    assert settings.blink_monitor_enabled is False
 
 
 def test_settings_mapping_uses_enum_keys() -> None:
@@ -62,10 +63,17 @@ def test_settings_reject_values_outside_supported_ranges(
         ("quick_break_seconds", 20.0),
         ("screen_goal_hours", float("inf")),
         ("screen_goal_hours", float("nan")),
+        ("onboarding_completed", 1),
+        ("reduced_motion", 0),
     ],
 )
 def test_settings_reject_invalid_value_types(field: str, value: Any) -> None:
     """Reject values with incompatible types or non-finite numeric values."""
-    exception = ValueError if field == "screen_goal_hours" else TypeError
+    exception = ValueError if field in {"screen_goal_hours", "ui_theme"} else TypeError
     with pytest.raises(exception):
         Settings(**{field: value})
+
+
+def test_settings_reject_unknown_theme() -> None:
+    with pytest.raises(ValueError, match="ui_theme"):
+        Settings(ui_theme="sepia")

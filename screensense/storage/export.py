@@ -9,6 +9,7 @@ def export_data_as_json(connection: sqlite3.Connection) -> str:
         "usage_hourly",
         "breaks",
         "yoga_sessions",
+        "blink_minutely",
         "daily_scores",
         "streaks",
         "badges",

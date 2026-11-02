@@ -27,6 +27,7 @@ class ScreenSenseTray:
         on_settings: Callable[[], None] | None = None,
         on_eye_yoga: Callable[[], None] | None = None,
         on_dashboard: Callable[[], None] | None = None,
+        on_stop_blink_monitor: Callable[[], None] | None = None,
         parent: QObject | None = None,
     ) -> None:
         self._icon = QSystemTrayIcon(parent)
@@ -35,7 +36,6 @@ class ScreenSenseTray:
             dashboard_action = QAction("Open Dashboard", self._menu)
             dashboard_action.triggered.connect(lambda _checked=False: on_dashboard())
             self._menu.addAction(dashboard_action)
-            self._menu.addSeparator()
         if on_eye_yoga is not None:
             eye_yoga_action = QAction("Start Eye Yoga (60s)", self._menu)
             eye_yoga_action.triggered.connect(lambda _checked=False: on_eye_yoga())
@@ -44,7 +44,14 @@ class ScreenSenseTray:
             settings_action = QAction("Settings", self._menu)
             settings_action.triggered.connect(lambda _checked=False: on_settings())
             self._menu.addAction(settings_action)
-        self._menu.addSeparator()
+        self._stop_blink_action: QAction | None = None
+        if on_stop_blink_monitor is not None:
+            self._stop_blink_action = QAction("Stop Blink Monitoring", self._menu)
+            self._stop_blink_action.setEnabled(False)
+            self._stop_blink_action.triggered.connect(
+                lambda _checked=False: on_stop_blink_monitor()
+            )
+            self._menu.addAction(self._stop_blink_action)
         quit_action = QAction("Quit", self._menu)
         quit_action.triggered.connect(lambda _checked=False: on_quit())
         self._menu.addAction(quit_action)
@@ -59,6 +66,8 @@ class ScreenSenseTray:
                 else None
             )
         self._status = TrayStatus.ACTIVE
+        self._camera_active = False
+        self._camera_status = "Monitoring"
         self.set_status(TrayStatus.ACTIVE)
         self._icon.show()
 
@@ -82,9 +91,28 @@ class ScreenSenseTray:
             painter.setPen(QPen(QColor("#FFFFFF"), 1.5))
             painter.setBrush(QColor(ACCENT))
             painter.drawEllipse(QRectF(19.0, 1.0, 12.0, 12.0))
+        if self._camera_active:
+            painter.setPen(QPen(QColor("#FFFFFF"), 1.5))
+            painter.setBrush(QColor("#D94F4F"))
+            painter.drawEllipse(QRectF(19.0, 19.0, 12.0, 12.0))
         painter.end()
         self._icon.setIcon(QIcon(pixmap))
-        self._icon.setToolTip(f"ScreenSense — {status.value.replace('_', ' ').title()}")
+        tooltip = f"ScreenSense — {status.value.replace('_', ' ').title()}"
+        if self._camera_active:
+            tooltip += f" · Camera active: {self._camera_status}"
+        self._icon.setToolTip(tooltip)
+
+    def set_camera_active(self, active: bool, status: str = "Monitoring") -> None:
+        """Show a persistent camera indicator and expose the tray kill switch."""
+        self._camera_active = active
+        self._camera_status = status
+        if self._stop_blink_action is not None:
+            self._stop_blink_action.setEnabled(active)
+        self.set_status(self._status)
+
+    def show_message(self, title: str, message: str, icon: QSystemTrayIcon.MessageIcon) -> None:
+        """Surface a worker startup or runtime failure to the user."""
+        self._icon.showMessage(title, message, icon)
 
     def close(self) -> None:
         """Hide the tray icon."""

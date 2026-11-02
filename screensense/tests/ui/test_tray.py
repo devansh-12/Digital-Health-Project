@@ -50,3 +50,26 @@ def test_tray_menu_actions(app: QApplication) -> None:
     assert yoga_called == [True]
     tray.close()
 
+
+def test_tray_exposes_camera_indicator_and_stop_switch(app: QApplication) -> None:
+    stopped = []
+    tray = ScreenSenseTray(
+        on_quit=lambda: None,
+        on_stop_blink_monitor=lambda: stopped.append(True),
+        parent=app,
+    )
+    action = next(
+        action
+        for action in tray._menu.actions()
+        if action.text() == "Stop Blink Monitoring"
+    )
+    assert not action.isEnabled()
+
+    tray.set_camera_active(True, "Calibrating")
+    assert action.isEnabled()
+    assert "Camera active: Calibrating" in tray._icon.toolTip()
+    action.trigger()
+    assert stopped == [True]
+    tray.set_camera_active(False)
+    assert not action.isEnabled()
+    tray.close()

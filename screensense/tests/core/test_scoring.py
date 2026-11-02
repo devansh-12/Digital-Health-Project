@@ -1,4 +1,5 @@
 import pytest
+
 from screensense.core.scoring import ScoreBand, compute_daily_score
 
 
@@ -58,7 +59,6 @@ def test_weight_redistribution_when_blink_monitor_enabled() -> None:
         blink_enabled=True,
     )
     assert breakdown.blink_score == 0.5
-    assert breakdown.score == int(round(100 * (0.40 * 1.0 + 0.20 * 1.0 + 0.25 * 1.0 + 0.15 * 0.5)))
     assert breakdown.score == 93
 
 

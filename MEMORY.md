@@ -60,10 +60,10 @@
 
 ## 7. Current State *(update every session)*
 
-- **Phase:** 3 (active intervention / Eye Yoga implementation complete)
-- **Done:** Phase 0, Phase 1, and Phase 2 implementation + runtime ticking and OS auto-detection; Phase 3 Eye Yoga domain routines (`core/yoga.py`), SQLite persistence (`YogaSessionsRepository`), vector animation widgets with <= 0.5 Hz motion and reduced-motion mode (`ui/eye_yoga/animations.py`), interactive modal player with countdown ring and keyboard navigation (`ui/eye_yoga/player.py`), integration with tray and reminder overlay, and test suites across core, storage, and UI.
-- **In progress:** Manual verification of Eye Yoga routine on desktop.
-- **Next up:** Phase 4: Dashboard, Score & Gamification (scoring engine, daily rollups, streaks with weekly freeze, charts).
+- **Phase:** 6 (in progress; Phases 3 and 4 are complete)
+- **Done:** Phases 0-5 implementation, including the opt-in blink monitor pipeline, aggregate persistence, and score integration. Phase 6 onboarding, theme/accessibility preferences, autostart control, crash diagnostics, and user/demo documentation are implemented.
+- **In progress:** Phase 6 PyInstaller build and clean-machine verification; Phase 5 webcam accuracy, CPU, and privacy gate also still requires hardware testing.
+- **Next up:** Verify the packaged app on a clean Windows 10/11 machine and complete the Phase 5 camera performance/accuracy gate.
 - **Blockers / open questions:** Windows manual matrix evidence; open questions in §9.
 
 ## 8. Decision Log

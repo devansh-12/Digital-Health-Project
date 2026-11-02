@@ -18,6 +18,10 @@ class SettingsKey(StrEnum):
     SCREEN_GOAL_HOURS = "screen_goal_hours"
     YOGA_TARGET_PER_DAY = "yoga_target_per_day"
     WORK_HOURS = "work_hours"
+    BLINK_MONITOR_ENABLED = "blink_monitor_enabled"
+    ONBOARDING_COMPLETED = "onboarding_completed"
+    UI_THEME = "ui_theme"
+    REDUCED_MOTION = "reduced_motion"
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +53,10 @@ class Settings:
     screen_goal_hours: float = 8.0
     yoga_target_per_day: int = 3
     work_hours: WorkHours | None = WorkHours(time(9), time(18))
+    blink_monitor_enabled: bool = False
+    onboarding_completed: bool = False
+    ui_theme: str = "dark"
+    reduced_motion: bool = False
 
     def __post_init__(self) -> None:
         """Reject values outside the supported settings ranges."""
@@ -73,9 +81,19 @@ class Settings:
         self._validate_positive_number(
             SettingsKey.SCREEN_GOAL_HOURS, self.screen_goal_hours
         )
-        self._validate_integer(SettingsKey.YOGA_TARGET_PER_DAY, self.yoga_target_per_day)
+        self._validate_integer(
+            SettingsKey.YOGA_TARGET_PER_DAY, self.yoga_target_per_day
+        )
+        if not isinstance(self.blink_monitor_enabled, bool):
+            raise TypeError("blink_monitor_enabled must be a boolean")
+        if not isinstance(self.onboarding_completed, bool):
+            raise TypeError("onboarding_completed must be a boolean")
+        if not isinstance(self.reduced_motion, bool):
+            raise TypeError("reduced_motion must be a boolean")
+        if self.ui_theme not in {"dark", "light"}:
+            raise ValueError("ui_theme must be 'dark' or 'light'")
 
-    def to_mapping(self) -> dict[SettingsKey, int | float | str]:
+    def to_mapping(self) -> dict[SettingsKey, int | float | str | bool]:
         """Return settings keyed by the stable enum values."""
         return {
             SettingsKey.WORK_INTERVAL_MINUTES: self.work_interval_minutes,
@@ -95,6 +113,10 @@ class Settings:
                     f"{','.join(str(day) for day in sorted(self.work_hours.weekdays))}"
                 )
             ),
+            SettingsKey.BLINK_MONITOR_ENABLED: self.blink_monitor_enabled,
+            SettingsKey.ONBOARDING_COMPLETED: self.onboarding_completed,
+            SettingsKey.UI_THEME: self.ui_theme,
+            SettingsKey.REDUCED_MOTION: self.reduced_motion,
         }
 
     @staticmethod

@@ -69,9 +69,9 @@ screensense/
 │   ├── repositories.py         # DAOs
 │   └── migrations/             # 001_init.sql ...
 ├── vision/                     # optional
-│   ├── worker.py               # multiprocessing entry
-│   ├── blink.py                # EAR + blink state machine
-│   └── calibration.py
+│   ├── worker.py               # isolated multiprocessing camera pipeline
+│   ├── blink.py                # EAR, calibration, blink state machine, aggregation
+│   └── calibration.py          # calibration API
 ├── ui/
 │   ├── tray.py
 │   ├── overlay.py              # break reminder window
@@ -84,6 +84,15 @@ screensense/
 ├── tests/
 └── docs/
 ```
+
+The monitor starts only after the user enables it in Settings and accepts the consent
+prompt. It samples at no more than 15 FPS, calibrates for 10 seconds, and falls back to
+an EAR baseline of 0.21 if calibration has too few face samples. The worker sends only
+status and per-minute aggregates to the app process; frames and landmarks are never
+written to disk or exported. The tray displays a camera-active dot for the full worker
+lifetime and offers a stop action. Good-blink minutes require at least 12 blinks and a
+face-present ratio of at least 0.5; only adequately monitored minutes contribute to the
+optional 15% blink score component.
 
 ### 3.2 Platform Adapters (`platform/base.py`)
 

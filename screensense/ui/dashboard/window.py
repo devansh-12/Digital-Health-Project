@@ -1,7 +1,7 @@
-from datetime import date, datetime, timedelta
 import sqlite3
+from datetime import datetime, timedelta
 
-from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -26,6 +26,7 @@ from screensense.platform_adapters.clock import SystemClock
 from screensense.storage.export import clear_all_data, export_data_as_json
 from screensense.storage.repositories import (
     BadgesRepository,
+    BlinkMetricsRepository,
     BreaksRepository,
     DailyScoreRecord,
     DailyScoresRepository,
@@ -54,6 +55,7 @@ class DashboardWindow(QDialog):
         scores_repo: DailyScoresRepository,
         streaks_repo: StreaksRepository,
         badges_repo: BadgesRepository,
+        blink_repo: BlinkMetricsRepository | None = None,
         settings_dialog: SettingsDialog | None = None,
         clock: Clock | None = None,
         parent: QWidget | None = None,
@@ -67,24 +69,21 @@ class DashboardWindow(QDialog):
         self._scores_repo = scores_repo
         self._streaks_repo = streaks_repo
         self._badges_repo = badges_repo
+        self._blink_repo = blink_repo
         self._settings_dialog = settings_dialog
         self._clock = clock if clock is not None else SystemClock()
+        self._theme = settings_repo.load().ui_theme
+        self._card_heading_labels: list[QLabel] = []
 
         self.setWindowTitle("ScreenSense — Dashboard")
         self.setObjectName("dashboardDialog")
         self.setMinimumSize(640, 620)
 
         self._build_ui()
+        self._apply_theme()
         self.refresh_data()
 
     def _build_ui(self) -> None:
-        self.setStyleSheet(
-            "QDialog#dashboardDialog { background-color: #1e1e1e; color: #cccccc; }"
-            "QLabel { border: none; background: transparent; color: #cccccc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }"
-            "QFrame#dashboardCard { background-color: #252526; border: 1px solid #333333; border-radius: 6px; }"
-            "QPushButton { border-radius: 4px; padding: 6px 12px; font-size: 12px; border: 1px solid #3c3c3c; background-color: #2d2d2d; color: #cccccc; }"
-            "QPushButton:hover { background-color: #383838; color: #ffffff; }"
-        )
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(20, 16, 20, 16)
         main_layout.setSpacing(12)
@@ -93,7 +92,8 @@ class DashboardWindow(QDialog):
         header_text = QVBoxLayout()
         header_text.setSpacing(1)
 
-        title_lbl = QLabel("ScreenSense")
+        self._title_label = QLabel("ScreenSense")
+        title_lbl = self._title_label
         title_lbl.setStyleSheet("font-size: 18px; font-weight: 600; color: #ffffff;")
         header_text.addWidget(title_lbl)
 
@@ -163,15 +163,20 @@ class DashboardWindow(QDialog):
         streak_layout.addLayout(streak_h)
 
         self._streak_days = QLabel("0 days")
-        self._streak_days.setStyleSheet("font-size: 24px; font-weight: 600; color: #ffffff;")
+        self._streak_days.setStyleSheet(
+            "font-size: 24px; font-weight: 600; color: #ffffff;"
+        )
         streak_layout.addWidget(self._streak_days)
 
         self._streak_sub = QLabel("Best: 0 days · Freeze available")
         self._streak_sub.setStyleSheet("font-size: 11px; color: #858585;")
         streak_layout.addWidget(self._streak_sub)
 
-        badges_header = QLabel("Milestones")
-        badges_header.setStyleSheet("font-size: 11px; font-weight: 600; color: #aaaaaa; margin-top: 4px;")
+        self._badges_header = QLabel("Milestones")
+        badges_header = self._badges_header
+        badges_header.setStyleSheet(
+            "font-size: 11px; font-weight: 600; color: #aaaaaa; margin-top: 4px;"
+        )
         streak_layout.addWidget(badges_header)
 
         self._badges_layout = QHBoxLayout()
@@ -206,7 +211,9 @@ class DashboardWindow(QDialog):
         insight_icon.setPixmap(get_svg_pixmap("lightbulb", "#E9C46A", 15))
         insight_layout.addWidget(insight_icon)
 
-        self._insight_text = QLabel("Insight: Your day starts here. A short break is a good first step.")
+        self._insight_text = QLabel(
+            "Insight: Your day starts here. A short break is a good first step."
+        )
         self._insight_text.setStyleSheet("font-size: 12px; color: #cccccc;")
         insight_layout.addWidget(self._insight_text)
         insight_layout.addStretch()
@@ -251,9 +258,77 @@ class DashboardWindow(QDialog):
         h_layout.addWidget(icon_lbl)
         text_lbl = QLabel(title)
         text_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #ffffff;")
+        self._card_heading_labels.append(text_lbl)
         h_layout.addWidget(text_lbl)
         h_layout.addStretch()
         return h_layout
+
+    def set_theme(self, theme: str) -> None:
+        """Apply the selected light or dark dashboard palette."""
+        if theme not in {"dark", "light"}:
+            raise ValueError(f"Unsupported theme: {theme}")
+        self._theme = theme
+        self._apply_theme()
+        self._render_badges(self._badges_repo.earned_codes())
+
+    def _apply_theme(self) -> None:
+        dark = self._theme == "dark"
+        palette = {
+            "background": "#1e1e1e" if dark else "#F7FAF9",
+            "surface": "#252526" if dark else "#FFFFFF",
+            "border": "#333333" if dark else "#D8E3E0",
+            "text": "#cccccc" if dark else "#14201E",
+            "title": "#ffffff" if dark else "#14201E",
+            "muted": "#858585" if dark else "#5B6B68",
+            "subtle": "#999999" if dark else "#5B6B68",
+        }
+        self.setStyleSheet(
+            "QDialog#dashboardDialog {"
+            f"background-color: {palette['background']}; color: {palette['text']};"
+            "}"
+            "QLabel { border: none; background: transparent; "
+            f"color: {palette['text']}; "
+            "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }"
+            "QFrame#dashboardCard {"
+            f"background-color: {palette['surface']}; "
+            f"border: 1px solid {palette['border']}; border-radius: 6px;"
+            "}"
+            "QPushButton { border-radius: 4px; padding: 6px 12px; font-size: 12px; "
+            f"border: 1px solid {palette['border']}; "
+            f"background-color: {palette['surface']}; color: {palette['text']};"
+            "}"
+            "QPushButton:hover { background-color: "
+            f"{'#383838' if dark else '#E8F3F0'}; color: {palette['title']};"
+            "}"
+        )
+        self._title_label.setStyleSheet(
+            f"font-size: 18px; font-weight: 600; color: {palette['title']};"
+        )
+        self._date_subtitle.setStyleSheet(
+            f"font-size: 11px; color: {palette['muted']};"
+        )
+        self._breakdown_text.setStyleSheet(
+            f"font-size: 11px; color: {palette['subtle']};"
+        )
+        self._timeline_summary.setStyleSheet(
+            f"font-size: 11px; color: {palette['muted']};"
+        )
+        self._streak_days.setStyleSheet(
+            f"font-size: 24px; font-weight: 600; color: {palette['title']};"
+        )
+        self._streak_sub.setStyleSheet(f"font-size: 11px; color: {palette['muted']};")
+        self._badges_header.setStyleSheet(
+            f"font-size: 11px; font-weight: 600; color: {palette['muted']}; "
+            "margin-top: 4px;"
+        )
+        self._trend_summary.setStyleSheet(
+            f"font-size: 11px; color: {palette['muted']};"
+        )
+        self._insight_text.setStyleSheet(f"font-size: 12px; color: {palette['text']};")
+        for heading in self._card_heading_labels:
+            heading.setStyleSheet(
+                f"font-size: 13px; font-weight: 600; color: {palette['title']};"
+            )
 
     def refresh_data(self) -> None:
         settings = self._settings_repo.load()
@@ -266,7 +341,14 @@ class DashboardWindow(QDialog):
 
         completed_b, due_b = self._breaks_repo.count_for_range(start_of_day, now_ts + 1)
         completed_yoga = self._yoga_repo.count_for_range(start_of_day, now_ts + 1)
-        active_seconds = self._usage_repo.get_active_seconds_for_range(start_of_day, now_ts + 3600)
+        active_seconds = self._usage_repo.get_active_seconds_for_range(
+            start_of_day, now_ts + 3600
+        )
+        good_blink_minutes, monitored_minutes = (
+            self._blink_repo.counts_for_range(start_of_day, now_ts + 3600)
+            if settings.blink_monitor_enabled and self._blink_repo is not None
+            else (0, 0)
+        )
 
         breakdown = compute_daily_score(
             completed_breaks=completed_b,
@@ -275,6 +357,9 @@ class DashboardWindow(QDialog):
             yoga_target=settings.yoga_target_per_day,
             active_seconds=active_seconds,
             screen_goal_hours=settings.screen_goal_hours,
+            good_blink_minutes=good_blink_minutes,
+            monitored_minutes=monitored_minutes,
+            blink_enabled=settings.blink_monitor_enabled,
         )
 
         score_rec = DailyScoreRecord(
@@ -289,7 +374,9 @@ class DashboardWindow(QDialog):
         self._scores_repo.save_score(score_rec)
 
         streak_state = self._streaks_repo.load()
-        streak_state = update_streak(streak_state, today_str, breakdown.score, completed_b)
+        streak_state = update_streak(
+            streak_state, today_str, breakdown.score, completed_b
+        )
         self._streaks_repo.save(streak_state)
 
         earned_codes = self._badges_repo.earned_codes()
@@ -307,19 +394,33 @@ class DashboardWindow(QDialog):
         self._gauge.set_score(breakdown.score, breakdown.band)
         active_hours = active_seconds / 3600.0
         self._breakdown_text.setText(
-            f"Breaks {completed_b}/{due_b} · Yoga {completed_yoga}/{settings.yoga_target_per_day} · Screen {active_hours:.1f}h"
+            f"Breaks {completed_b}/{due_b} · Yoga {completed_yoga}/{settings.yoga_target_per_day} "
+            f"· Screen {active_hours:.1f}h"
+            + (
+                f" · Blink {good_blink_minutes}/{monitored_minutes} min"
+                if settings.blink_monitor_enabled and monitored_minutes > 0
+                else ""
+            )
         )
 
-        hourly_rows = self._usage_repo.get_hourly_breakdown_for_range(start_of_day, now_ts + 3600)
+        hourly_rows = self._usage_repo.get_hourly_breakdown_for_range(
+            start_of_day, now_ts + 3600
+        )
         hourly_map: list[tuple[int, int]] = []
         for h_start, act_s, _ in hourly_rows:
             h_dt = datetime.fromtimestamp(h_start)
             hourly_map.append((h_dt.hour, act_s))
         self._timeline_widget.set_data(hourly_map)
-        self._timeline_summary.setText(f"{active_hours:.1f}h active · {completed_b} breaks completed")
+        self._timeline_summary.setText(
+            f"{active_hours:.1f}h active · {completed_b} breaks completed"
+        )
 
-        self._streak_days.setText(f"{streak_state.current} {'day' if streak_state.current == 1 else 'days'}")
-        freeze_status = "Freeze used" if streak_state.freeze_week else "Freeze available"
+        self._streak_days.setText(
+            f"{streak_state.current} {'day' if streak_state.current == 1 else 'days'}"
+        )
+        freeze_status = (
+            "Freeze used" if streak_state.freeze_week else "Freeze available"
+        )
         self._streak_sub.setText(f"Best: {streak_state.best} days · {freeze_status}")
 
         self._render_badges(earned_codes)
@@ -339,7 +440,9 @@ class DashboardWindow(QDialog):
         if completed_b > 0:
             self._insight_text.setText(f"Insight: {breakdown.explanation}")
         else:
-            self._insight_text.setText("Insight: Your day starts here. A short break is a good first step.")
+            self._insight_text.setText(
+                "Insight: Your day starts here. A short break is a good first step."
+            )
 
     def _render_badges(self, earned_codes: set[str]) -> None:
         while self._badges_layout.count():
@@ -349,11 +452,27 @@ class DashboardWindow(QDialog):
 
         for b in BADGES_CATALOGUE[:4]:
             is_earned = b.code in earned_codes
+            dark = self._theme == "dark"
+            background = (
+                ("#17332f" if is_earned else "#1e1e1e")
+                if dark
+                else ("#E5F4F0" if is_earned else "#F7FAF9")
+            )
+            border = (
+                ("#2A9D8F" if is_earned else "#2c2c2c")
+                if dark
+                else ("#2A9D8F" if is_earned else "#D8E3E0")
+            )
+            badge_text = (
+                ("#ffffff" if is_earned else "#666666")
+                if dark
+                else ("#14201E" if is_earned else "#5B6B68")
+            )
             badge_frame = QFrame(self)
             badge_frame.setStyleSheet(
                 "QFrame {"
-                f"  background-color: {'#17332f' if is_earned else '#1e1e1e'};"
-                f"  border: 1px solid {'#2A9D8F' if is_earned else '#2c2c2c'};"
+                f"  background-color: {background};"
+                f"  border: 1px solid {border};"
                 "  border-radius: 4px;"
                 "  padding: 3px 6px;"
                 "}"
@@ -364,12 +483,15 @@ class DashboardWindow(QDialog):
 
             icon_lbl = QLabel()
             icon_name = "check" if is_earned else "lock"
-            icon_color = "#2A9D8F" if is_earned else "#555555"
+            icon_color = "#2A9D8F" if is_earned else ("#555555" if dark else "#5B6B68")
             icon_lbl.setPixmap(get_svg_pixmap(icon_name, icon_color, 11))
             b_layout.addWidget(icon_lbl)
 
             name_lbl = QLabel(b.title)
-            name_lbl.setStyleSheet(f"font-size: 10px; color: {'#ffffff' if is_earned else '#666666'}; font-weight: {'500' if is_earned else '400'};")
+            name_lbl.setStyleSheet(
+                f"font-size: 10px; color: {badge_text}; "
+                f"font-weight: {'500' if is_earned else '400'};"
+            )
             b_layout.addWidget(name_lbl)
 
             badge_frame.setToolTip(f"{b.title}: {b.description}")

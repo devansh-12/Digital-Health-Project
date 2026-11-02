@@ -62,7 +62,7 @@ def compute_daily_score(
         + w_screen * screen_component
         + w_blink * blink_component
     )
-    score = int(round(100.0 * weighted_sum))
+    score = int(100.0 * weighted_sum + 0.5)
     score = max(0, min(100, score))
 
     if score >= 80:
