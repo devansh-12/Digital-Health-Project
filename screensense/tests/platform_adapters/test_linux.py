@@ -1,6 +1,5 @@
 """Test Linux platform adapters."""
 
-from pathlib import Path
 from screensense.platform_adapters.base import PowerEvent
 from screensense.platform_adapters.linux import (
     LinuxAppDataProvider,
@@ -66,3 +65,18 @@ def test_linux_autostart_provider(monkeypatch, tmp_path) -> None:
     provider.disable()
     assert not provider.is_enabled()
     assert not desktop_file.exists()
+
+
+def test_linux_autostart_quotes_python_path(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setattr(
+        "screensense.platform_adapters.linux.sys.executable",
+        "/opt/Screen Sense/python",
+    )
+    provider = LinuxAutostartProvider()
+
+    provider.enable()
+
+    desktop_file = tmp_path / "autostart" / "screensense.desktop"
+    expected_exec = 'Exec="/opt/Screen Sense/python" -m screensense.app'
+    assert expected_exec in desktop_file.read_text(encoding="utf-8")

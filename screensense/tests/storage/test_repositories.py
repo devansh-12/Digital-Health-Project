@@ -47,11 +47,25 @@ def test_settings_repository_round_trips_values(connection) -> None:
         screen_goal_hours=7.5,
         yoga_target_per_day=2,
         work_hours=WorkHours(time(8, 30), time(17, 45), frozenset({0, 2, 4})),
+        blink_monitor_enabled=True,
     )
 
     repository.save(settings)
 
     assert repository.load() == settings
+
+
+def test_settings_repository_defaults_blink_monitor_to_disabled(connection) -> None:
+    repository = SettingsRepository(connection)
+    assert repository.load().blink_monitor_enabled is False
+
+
+def test_settings_repository_rejects_invalid_blink_preference(connection) -> None:
+    connection.execute(
+        "INSERT INTO settings (key, value) VALUES ('blink_monitor_enabled', 'yes')"
+    )
+    with pytest.raises(ValueError, match="blink_monitor_enabled"):
+        SettingsRepository(connection).load()
 
 
 def test_settings_repository_round_trips_disabled_work_hours(connection) -> None:

@@ -1,11 +1,10 @@
 """Test EyeYogaPlayer UI transitions and events."""
 
 import pytest
-from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
 from screensense.core.clock import FakeClock
-from screensense.core.yoga import DEFAULT_EYE_YOGA_ROUTINE, YogaRoutine, YogaStep
+from screensense.core.yoga import YogaRoutine, YogaStep
 from screensense.ui.eye_yoga.player import EyeYogaPlayer
 
 
@@ -27,6 +26,18 @@ def test_eye_yoga_player_initial_state(qapp) -> None:
     assert "Rub palms" in player._step_instruction.text()
     assert player._control_button.text() == "Pause"
     assert not player._is_paused
+    player.close()
+
+
+def test_eye_yoga_player_updates_theme_for_new_and_active_sessions(qapp) -> None:
+    player = EyeYogaPlayer(clock=FakeClock(), theme="light")
+    assert "#F7FAF9" in player.styleSheet()
+
+    player.start()
+    player.set_theme("dark")
+
+    assert "#000000" in player.styleSheet()
+    assert "#ffffff" in player._step_title.styleSheet()
     player.close()
 
 
@@ -89,7 +100,7 @@ def test_eye_yoga_player_exit_signal(qapp) -> None:
 
     player._handle_exit()
     assert len(exited_payload) == 1
-    done, total, dur = exited_payload[0]
+    done, total, _duration = exited_payload[0]
     assert done == 0
     assert total == 6
     player.close()

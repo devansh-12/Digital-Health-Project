@@ -145,7 +145,7 @@ def test_countdown_uses_injected_clock_and_does_not_auto_dismiss(
 
 def test_stylesheet_uses_style_guide_tokens() -> None:
     """Load the QSS file and verify key light-theme tokens are present."""
-    stylesheet = load_stylesheet()
+    stylesheet = load_stylesheet("light")
 
     assert "#F7FAF9" in stylesheet
     assert "#14201E" in stylesheet

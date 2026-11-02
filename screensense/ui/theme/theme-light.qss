@@ -1,0 +1,69 @@
+QWidget {
+    background-color: #F7FAF9;
+    color: #14201E;
+    font-family: "Segoe UI", sans-serif;
+}
+
+QDialog {
+    background-color: #F7FAF9;
+    color: #14201E;
+}
+
+QLabel#settingsSectionHeading {
+    color: #14201E;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QLabel#settingsFieldLabel {
+    color: #5B6B68;
+    font-size: 12px;
+}
+
+QPushButton, QComboBox, QLineEdit, QTimeEdit, QListWidget {
+    background-color: #FFFFFF;
+    color: #14201E;
+    border: 1px solid #B7C7C3;
+    border-radius: 4px;
+    padding: 6px 10px;
+}
+
+QPushButton:hover, QComboBox:hover {
+    background-color: #E8F3F0;
+}
+
+QPushButton:focus, QComboBox:focus, QLineEdit:focus, QTimeEdit:focus {
+    border: 2px solid #18786D;
+}
+
+QPushButton#primaryActionButton {
+    background-color: #18786D;
+    color: #FFFFFF;
+    font-weight: 600;
+}
+
+QPushButton#primaryActionButton:hover {
+    background-color: #125E55;
+}
+
+QListWidget::item:selected, QComboBox QAbstractItemView::item:selected {
+    background-color: #D5ECE7;
+    color: #14201E;
+}
+
+QCheckBox {
+    spacing: 8px;
+}
+
+QCheckBox:focus {
+    outline: 2px solid #2A9D8F;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #2A9D8F;
+    border: 2px solid #E9C46A;
+}
+
+QLabel#validationMessage {
+    color: #A52820;
+}

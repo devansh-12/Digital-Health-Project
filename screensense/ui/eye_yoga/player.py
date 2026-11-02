@@ -1,8 +1,5 @@
 """Display the guided 60-second Eye Yoga interactive player."""
 
-from collections.abc import Callable
-from math import ceil
-
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QCloseEvent, QKeyEvent
 from PyQt6.QtWidgets import (
@@ -18,7 +15,6 @@ from screensense.core.yoga import DEFAULT_EYE_YOGA_ROUTINE, YogaRoutine
 from screensense.platform_adapters.clock import SystemClock
 from screensense.ui.eye_yoga.animations import EyeYogaAnimationWidget
 from screensense.ui.overlay import CountdownRing
-from screensense.ui.theme import MUTED, PRIMARY, TEXT
 
 
 class EyeYogaPlayer(QWidget):
@@ -32,6 +28,7 @@ class EyeYogaPlayer(QWidget):
         clock: Clock | None = None,
         routine: YogaRoutine = DEFAULT_EYE_YOGA_ROUTINE,
         reduced_motion: bool = False,
+        theme: str = "dark",
         parent: QWidget | None = None,
     ) -> None:
         """Initialize the Eye Yoga player window."""
@@ -39,6 +36,9 @@ class EyeYogaPlayer(QWidget):
         self._clock = clock if clock is not None else SystemClock()
         self._routine = routine
         self._reduced_motion = reduced_motion
+        if theme not in {"dark", "light"}:
+            raise ValueError(f"Unsupported theme: {theme}")
+        self._theme = theme
 
         self._current_step_index = 0
         self._step_remaining_s = float(
@@ -55,6 +55,7 @@ class EyeYogaPlayer(QWidget):
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
 
         self._build_ui()
+        self._apply_theme()
 
         self._timer = QTimer(self)
         self._timer.setInterval(200)
@@ -68,7 +69,9 @@ class EyeYogaPlayer(QWidget):
 
         header_layout = QHBoxLayout()
         self._step_counter = QLabel("")
-        self._step_counter.setStyleSheet("font-size: 14px; color: #2A9D8F; letter-spacing: 6px;")
+        self._step_counter.setStyleSheet(
+            "font-size: 14px; color: #2A9D8F; letter-spacing: 6px;"
+        )
         header_layout.addWidget(self._step_counter)
 
         header_layout.addStretch()
@@ -96,13 +99,17 @@ class EyeYogaPlayer(QWidget):
 
         self._step_title = QLabel("")
         self._step_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._step_title.setStyleSheet("font-size: 22px; font-weight: 400; letter-spacing: 1.5px; color: #ffffff;")
+        self._step_title.setStyleSheet(
+            "font-size: 22px; font-weight: 400; letter-spacing: 1.5px; color: #ffffff;"
+        )
         text_layout.addWidget(self._step_title)
 
         self._step_instruction = QLabel("")
         self._step_instruction.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._step_instruction.setWordWrap(True)
-        self._step_instruction.setStyleSheet("color: #cccccc; font-size: 15px; font-weight: 500;")
+        self._step_instruction.setStyleSheet(
+            "color: #cccccc; font-size: 15px; font-weight: 500;"
+        )
         text_layout.addWidget(self._step_instruction)
 
         layout.addLayout(text_layout)
@@ -112,7 +119,9 @@ class EyeYogaPlayer(QWidget):
         timer_layout = QHBoxLayout()
         timer_layout.addStretch()
         step_sec = self._routine.steps[0].seconds if self._routine.steps else 10
-        self._countdown_ring = CountdownRing(float(step_sec), parent=self, text_color="#FFFFFF")
+        self._countdown_ring = CountdownRing(
+            float(step_sec), parent=self, text_color="#FFFFFF"
+        )
         timer_layout.addWidget(self._countdown_ring)
         timer_layout.addStretch()
         layout.addLayout(timer_layout)
@@ -147,18 +156,60 @@ class EyeYogaPlayer(QWidget):
         self._anim_widget.show()
         self._countdown_ring.show()
         self._countdown_ring.reset(float(step_sec))
-        self._step_title.setStyleSheet("font-size: 22px; font-weight: 400; letter-spacing: 1.5px; color: #ffffff;")
-        self._step_instruction.setStyleSheet("color: #cccccc; font-size: 15px; font-weight: 500;")
         self._control_button.setText("Pause")
         self._control_button.setEnabled(True)
         self._exit_button.setEnabled(True)
         self._update_step_display()
+        self._apply_theme()
 
         self.show()
         self.raise_()
         self.activateWindow()
         self._control_button.setFocus()
         self._timer.start()
+
+    def set_reduced_motion(self, reduced: bool) -> None:
+        """Update animation motion preference for the active or next routine."""
+        self._anim_widget.set_reduced_motion(reduced)
+
+    def set_theme(self, theme: str) -> None:
+        """Apply the selected light or dark palette to the routine player."""
+        if theme not in {"dark", "light"}:
+            raise ValueError(f"Unsupported theme: {theme}")
+        self._theme = theme
+        self._apply_theme()
+
+    def _apply_theme(self) -> None:
+        dark = self._theme == "dark"
+        background = "#000000" if dark else "#F7FAF9"
+        title_color = "#ffffff" if dark else "#14201E"
+        body_color = "#cccccc" if dark else "#14201E"
+        muted_color = "#aaaaaa" if dark else "#5B6B68"
+        self.setStyleSheet(f"background-color: {background}; color: {body_color};")
+        self._step_counter.setStyleSheet(
+            "font-size: 14px; color: #2A9D8F; letter-spacing: 6px;"
+        )
+        self._exit_button.setStyleSheet(
+            "QPushButton { border: none; background: transparent; "
+            f"color: {muted_color}; font-size: 16px; }}"
+            f"QPushButton:hover {{ color: {title_color}; }}"
+        )
+        self._step_title.setStyleSheet(
+            "font-size: 22px; font-weight: 400; letter-spacing: 1.5px; "
+            f"color: {title_color};"
+        )
+        self._step_instruction.setStyleSheet(
+            f"color: {body_color}; font-size: 15px; font-weight: 500;"
+        )
+        self._control_button.setStyleSheet(
+            "QPushButton { border: 1px solid #2a2a2a; border-radius: 20px; "
+            f"background-color: {background}; color: {muted_color}; "
+            "font-size: 13px; font-weight: 500; }"
+            "QPushButton:hover { border-color: #2A9D8F; "
+            f"color: {title_color}; background-color: "
+            f"{'#14201e' if dark else '#E8F3F0'}; }}"
+            "QPushButton:focus { border-color: #2A9D8F; }"
+        )
 
     def _update_step_display(self) -> None:
         if not self._routine.steps or self._current_step_index >= len(
@@ -168,7 +219,10 @@ class EyeYogaPlayer(QWidget):
         step = self._routine.steps[self._current_step_index]
         self._step_title.setText(step.name)
         self._step_instruction.setText(step.text)
-        dots = " ".join("●" if i <= self._current_step_index else "○" for i in range(len(self._routine.steps)))
+        dots = " ".join(
+            "●" if i <= self._current_step_index else "○"
+            for i in range(len(self._routine.steps))
+        )
         self._step_counter.setText(dots)
         self._anim_widget.set_anim_type(step.anim)
         self._countdown_ring.set_remaining_seconds(self._step_remaining_s)
@@ -206,10 +260,16 @@ class EyeYogaPlayer(QWidget):
         self._countdown_ring.hide()
 
         self._step_title.setText("Rest complete")
-        self._step_title.setStyleSheet("font-size: 26px; font-weight: 600; letter-spacing: 1px; color: #ffffff;")
+        self._step_title.setStyleSheet(
+            "font-size: 26px; font-weight: 600; letter-spacing: 1px; color: #ffffff;"
+        )
         self._step_instruction.setText("Your eyes are refreshed.")
-        self._step_instruction.setStyleSheet("font-size: 16px; font-weight: 500; color: #dddddd;")
-        self._step_counter.setText(" ".join("●" for _ in range(len(self._routine.steps))))
+        self._step_instruction.setStyleSheet(
+            "font-size: 16px; font-weight: 500; color: #dddddd;"
+        )
+        self._step_counter.setText(
+            " ".join("●" for _ in range(len(self._routine.steps)))
+        )
 
         self._control_button.setText("Done")
         self._control_button.setEnabled(True)
@@ -242,9 +302,7 @@ class EyeYogaPlayer(QWidget):
         self._timer.stop()
         completed = self._current_step_index
         total = len(self._routine.steps)
-        self.session_exited.emit(
-            completed, total, int(round(self._total_elapsed_s))
-        )
+        self.session_exited.emit(completed, total, int(round(self._total_elapsed_s)))
         self.close()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:

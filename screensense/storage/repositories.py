@@ -54,7 +54,7 @@ class SettingsRepository:
         """Load saved values over defaults and validate the resulting settings."""
         defaults = Settings()
         default_values = defaults.to_mapping()
-        values: dict[SettingsKey, int | float | str] = dict(default_values)
+        values: dict[SettingsKey, int | float | str | bool] = dict(default_values)
 
         rows = self._connection.execute("SELECT key, value FROM settings")
         for row in rows:
@@ -65,6 +65,15 @@ class SettingsRepository:
             default_value = default_values[key]
             try:
                 if key is SettingsKey.WORK_HOURS:
+                    values[key] = str(row[1])
+                elif key is SettingsKey.BLINK_MONITOR_ENABLED or key in {
+                    SettingsKey.ONBOARDING_COMPLETED,
+                    SettingsKey.REDUCED_MOTION,
+                }:
+                    if str(row[1]) not in {"0", "1"}:
+                        raise ValueError(f"Invalid stored value for {key.value}")
+                    values[key] = str(row[1]) == "1"
+                elif key is SettingsKey.UI_THEME:
                     values[key] = str(row[1])
                 else:
                     values[key] = (
@@ -85,6 +94,10 @@ class SettingsRepository:
             screen_goal_hours=float(values[SettingsKey.SCREEN_GOAL_HOURS]),
             yoga_target_per_day=int(values[SettingsKey.YOGA_TARGET_PER_DAY]),
             work_hours=self._parse_work_hours(str(values[SettingsKey.WORK_HOURS])),
+            blink_monitor_enabled=bool(values[SettingsKey.BLINK_MONITOR_ENABLED]),
+            onboarding_completed=bool(values[SettingsKey.ONBOARDING_COMPLETED]),
+            ui_theme=str(values[SettingsKey.UI_THEME]),
+            reduced_motion=bool(values[SettingsKey.REDUCED_MOTION]),
         )
 
     @staticmethod
@@ -105,7 +118,11 @@ class SettingsRepository:
     def save(self, settings: Settings) -> None:
         """Persist every validated setting in one transaction."""
         entries = [
-            (key.value, str(value)) for key, value in settings.to_mapping().items()
+            (
+                key.value,
+                ("1" if value else "0") if isinstance(value, bool) else str(value),
+            )
+            for key, value in settings.to_mapping().items()
         ]
         with self._connection:
             self._connection.executemany(
@@ -129,10 +146,7 @@ class ContextRulesRepository:
         rows = self._connection.execute(
             "SELECT process, rule FROM context_rules ORDER BY process"
         )
-        return {
-            str(row[0]): ContextRule(str(row[1]))
-            for row in rows
-        }
+        return {str(row[0]): ContextRule(str(row[1])) for row in rows}
 
     def set_rule(self, process: str, rule: ContextRule) -> None:
         """Insert or update a rule for a normalized process name."""
@@ -166,9 +180,7 @@ class BreaksRepository:
         """Create a repository backed by an open database connection."""
         self._connection = connection
 
-    def create(
-        self, due_at: int, kind: BreakKind, shown_at: int | None = None
-    ) -> int:
+    def create(self, due_at: int, kind: BreakKind, shown_at: int | None = None) -> int:
         """Insert a pending break and return its database identifier."""
         cursor = self._connection.execute(
             "INSERT INTO breaks (due_at, shown_at, kind) VALUES (?, ?, ?)",
@@ -249,9 +261,17 @@ class BreaksRepository:
         suppressed_break_id: int | None = None,
     ) -> None:
         """Insert a completed break or finalize its queued suppressed record."""
-        if kind not in (BreakKind.QUICK.value, BreakKind.LONG.value, BreakKind.YOGA.value):
+        if kind not in (
+            BreakKind.QUICK.value,
+            BreakKind.LONG.value,
+            BreakKind.YOGA.value,
+        ):
             raise ValueError("completed breaks must use quick, long, or yoga kind")
-        if isinstance(duration_s, bool) or not isinstance(duration_s, int) or duration_s < 0:
+        if (
+            isinstance(duration_s, bool)
+            or not isinstance(duration_s, int)
+            or duration_s < 0
+        ):
             raise ValueError("duration_s must be a non-negative integer")
         with self._connection:
             if suppressed_break_id is not None:
@@ -288,7 +308,11 @@ class BreaksRepository:
 
     def record_natural(self, due_at: int, duration_s: int) -> None:
         """Insert a completed natural break using parameterized SQL."""
-        if isinstance(duration_s, bool) or not isinstance(duration_s, int) or duration_s < 0:
+        if (
+            isinstance(duration_s, bool)
+            or not isinstance(duration_s, int)
+            or duration_s < 0
+        ):
             raise ValueError("duration_s must be a non-negative integer")
         with self._connection:
             self._connection.execute(
@@ -342,7 +366,9 @@ class BreaksRepository:
             due_at=int(row[1]),
             shown_at=int(row[2]) if row[2] is not None else None,
             kind=BreakKind(str(row[3])),
-            outcome=(BreakOutcome(str(outcome_value)) if outcome_value is not None else None),
+            outcome=(
+                BreakOutcome(str(outcome_value)) if outcome_value is not None else None
+            ),
             duration_s=int(row[5]) if row[5] is not None else None,
         )
 
@@ -429,9 +455,7 @@ class UsageHourlyRepository:
                 conn.close()
 
     @staticmethod
-    def _upsert(
-        connection: sqlite3.Connection, buckets: Sequence[UsageBucket]
-    ) -> None:
+    def _upsert(connection: sqlite3.Connection, buckets: Sequence[UsageBucket]) -> None:
         entries: list[tuple[int, int, int, int, int]] = []
         for bucket in buckets:
             if (
@@ -447,9 +471,7 @@ class UsageHourlyRepository:
                 bucket.call_s,
             )
             if any(
-                isinstance(value, bool)
-                or not isinstance(value, int)
-                or value < 0
+                isinstance(value, bool) or not isinstance(value, int) or value < 0
                 for value in values
             ):
                 raise ValueError("usage counters must be non-negative integers")
@@ -551,6 +573,84 @@ class YogaSessionsRepository:
                 duration_s=row[4],
             )
             for row in cursor.fetchall()
+        ]
+
+
+@dataclass(frozen=True, slots=True)
+class BlinkMinuteRecord:
+    """Aggregated blink measurements stored for one minute."""
+
+    minute_start: int
+    blinks: int
+    face_present_ratio: float
+    ear_mean: float | None
+
+
+class BlinkMetricsRepository:
+    """Persist and query aggregated blink metrics without retaining camera data."""
+
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
+
+    def record_minute(self, record: BlinkMinuteRecord) -> None:
+        if record.minute_start < 0 or record.blinks < 0:
+            raise ValueError("minute_start and blinks must be non-negative")
+        if not 0.0 <= record.face_present_ratio <= 1.0:
+            raise ValueError("face_present_ratio must be between zero and one")
+        if record.ear_mean is not None and record.ear_mean < 0:
+            raise ValueError("ear_mean must be non-negative")
+        with self._connection:
+            self._connection.execute(
+                """
+                INSERT INTO blink_minutely (
+                    minute_start, blinks, face_present_ratio, ear_mean
+                ) VALUES (?, ?, ?, ?)
+                ON CONFLICT(minute_start) DO UPDATE SET
+                    blinks = excluded.blinks,
+                    face_present_ratio = excluded.face_present_ratio,
+                    ear_mean = excluded.ear_mean
+                """,
+                (
+                    record.minute_start,
+                    record.blinks,
+                    record.face_present_ratio,
+                    record.ear_mean,
+                ),
+            )
+
+    def counts_for_range(self, start_ts: int, end_ts: int) -> tuple[int, int]:
+        """Return (good-blink minutes, adequately monitored minutes) in [start, end)."""
+        row = self._connection.execute(
+            """
+            SELECT
+                SUM(CASE WHEN blinks >= 12 THEN 1 ELSE 0 END),
+                COUNT(*)
+            FROM blink_minutely
+            WHERE minute_start >= ? AND minute_start < ?
+              AND face_present_ratio >= 0.5
+            """,
+            (start_ts, end_ts),
+        ).fetchone()
+        return (int(row[0] or 0), int(row[1] or 0))
+
+    def list_for_range(self, start_ts: int, end_ts: int) -> list[BlinkMinuteRecord]:
+        rows = self._connection.execute(
+            """
+            SELECT minute_start, blinks, face_present_ratio, ear_mean
+            FROM blink_minutely
+            WHERE minute_start >= ? AND minute_start < ?
+            ORDER BY minute_start
+            """,
+            (start_ts, end_ts),
+        )
+        return [
+            BlinkMinuteRecord(
+                minute_start=int(row[0]),
+                blinks=int(row[1] or 0),
+                face_present_ratio=float(row[2] or 0.0),
+                ear_mean=float(row[3]) if row[3] is not None else None,
+            )
+            for row in rows
         ]
 
 

@@ -4,6 +4,7 @@ from dataclasses import replace
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QHBoxLayout,
@@ -11,6 +12,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QTimeEdit,
     QVBoxLayout,
@@ -19,6 +21,7 @@ from PyQt6.QtWidgets import (
 
 from screensense.core.config import WorkHours
 from screensense.core.context import ContextRule
+from screensense.platform_adapters.base import AutostartProvider
 from screensense.storage.repositories import ContextRulesRepository, SettingsRepository
 
 
@@ -32,11 +35,13 @@ class SettingsDialog(QDialog):
         settings_repository: SettingsRepository,
         rules_repository: ContextRulesRepository,
         parent: QWidget | None = None,
+        autostart_provider: AutostartProvider | None = None,
     ) -> None:
         """Build a keyboard-operable editor backed by local repositories."""
         super().__init__(parent)
         self._settings_repository = settings_repository
         self._rules_repository = rules_repository
+        self._autostart_provider = autostart_provider
         self.setWindowTitle("ScreenSense settings")
         self._build_ui()
         self._load_values()
@@ -48,7 +53,7 @@ class SettingsDialog(QDialog):
         layout.setContentsMargins(22, 22, 22, 22)
         layout.setSpacing(12)
         self.setAccessibleName("ScreenSense settings")
-        self.setMinimumSize(440, 520)
+        self.setMinimumSize(440, 640)
         self.day_checks: list[QPushButton] = []
         days = QHBoxLayout()
         days.setSpacing(6)
@@ -96,6 +101,31 @@ class SettingsDialog(QDialog):
         self.remove_rule_button.setObjectName("secondaryActionButton")
         self.rule_list = QListWidget(self)
         self.rule_list.setAccessibleName("Process context rules")
+        self.blink_monitor_checkbox = QCheckBox(
+            "Enable optional blink monitoring (webcam)", self
+        )
+        self.blink_monitor_checkbox.setAccessibleName("Enable blink monitoring")
+        self.blink_privacy_label = QLabel(
+            "Uses your camera on this device only. Frames are processed in memory; "
+            "only per-minute blink estimates are saved. You can stop it from the tray.",
+            self,
+        )
+        self.blink_privacy_label.setWordWrap(True)
+        self.blink_privacy_label.setObjectName("settingsFieldLabel")
+        self.theme_choice = QComboBox(self)
+        self.theme_choice.addItem("Dark theme", "dark")
+        self.theme_choice.addItem("Light theme", "light")
+        self.theme_choice.setAccessibleName("Application theme")
+        self.reduced_motion_checkbox = QCheckBox("Reduce motion", self)
+        self.reduced_motion_checkbox.setAccessibleName("Reduce motion")
+        self.autostart_checkbox = QCheckBox("Start ScreenSense when I sign in", self)
+        self.autostart_checkbox.setAccessibleName("Start ScreenSense automatically")
+        self.autostart_checkbox.setEnabled(self._autostart_provider is not None)
+        self.autostart_help = QLabel(
+            "Autostart is available on supported Windows and Linux desktops.", self
+        )
+        self.autostart_help.setWordWrap(True)
+        self.autostart_help.setObjectName("settingsFieldLabel")
         self.validation_label = QLabel("", self)
         self.validation_label.setObjectName("validationMessage")
         self.validation_label.setAccessibleName("Settings validation message")
@@ -115,6 +145,13 @@ class SettingsDialog(QDialog):
         row.addWidget(self.remove_rule_button)
         layout.addLayout(row)
         layout.addWidget(self.rule_list)
+        layout.addWidget(self.blink_monitor_checkbox)
+        layout.addWidget(self.blink_privacy_label)
+        layout.addWidget(QLabel("Appearance", self))
+        layout.addWidget(self.theme_choice)
+        layout.addWidget(self.reduced_motion_checkbox)
+        layout.addWidget(self.autostart_checkbox)
+        layout.addWidget(self.autostart_help)
         layout.addWidget(self.validation_label)
         footer = QHBoxLayout()
         footer.setSpacing(10)
@@ -130,12 +167,25 @@ class SettingsDialog(QDialog):
     def _load_values(self) -> None:
         """Populate controls from the current local settings and process rules."""
         settings = self._settings_repository.load()
+        self.blink_monitor_checkbox.setChecked(settings.blink_monitor_enabled)
+        self.theme_choice.setCurrentIndex(
+            max(0, self.theme_choice.findData(settings.ui_theme))
+        )
+        self.reduced_motion_checkbox.setChecked(settings.reduced_motion)
+        if self._autostart_provider is not None:
+            self.autostart_checkbox.setChecked(self._autostart_provider.is_enabled())
         schedule = settings.work_hours
         for index, button in enumerate(self.day_checks):
             button.setChecked(schedule is not None and index in schedule.weekdays)
         if schedule is not None:
-            self.start_time.setTime(self.start_time.time().fromString(schedule.start.strftime("%H:%M"), "HH:mm"))
-            self.end_time.setTime(self.end_time.time().fromString(schedule.end.strftime("%H:%M"), "HH:mm"))
+            self.start_time.setTime(
+                self.start_time.time().fromString(
+                    schedule.start.strftime("%H:%M"), "HH:mm"
+                )
+            )
+            self.end_time.setTime(
+                self.end_time.time().fromString(schedule.end.strftime("%H:%M"), "HH:mm")
+            )
         for process, rule in self._rules_repository.load_all().items():
             self._append_rule(process, rule)
 
@@ -149,9 +199,14 @@ class SettingsDialog(QDialog):
         """Validate and display one process-only rule."""
         process = self.process_input.text().strip().casefold()
         if not process or any(separator in process for separator in ("/", "\\")):
-            self.validation_label.setText("Enter a process name only, such as editor.exe.")
+            self.validation_label.setText(
+                "Enter a process name only, such as editor.exe."
+            )
             return
-        if any(self.rule_list.item(i).data(Qt.ItemDataRole.UserRole)[0] == process for i in range(self.rule_list.count())):
+        if any(
+            self.rule_list.item(i).data(Qt.ItemDataRole.UserRole)[0] == process
+            for i in range(self.rule_list.count())
+        ):
             self.validation_label.setText("That process already has a rule.")
             return
         self._append_rule(process, self.rule_choice.currentData())
@@ -166,15 +221,48 @@ class SettingsDialog(QDialog):
 
     def _save(self) -> None:
         """Validate and save work hours and all listed process rules."""
-        days = frozenset(index for index, button in enumerate(self.day_checks) if button.isChecked())
+        days = frozenset(
+            index for index, button in enumerate(self.day_checks) if button.isChecked()
+        )
         start = self.start_time.time().toPyTime()
         end = self.end_time.time().toPyTime()
         if bool(days) != (start < end):
-            self.validation_label.setText("Choose at least one day and an end time after the start.")
+            self.validation_label.setText(
+                "Choose at least one day and an end time after the start."
+            )
             return
         current = self._settings_repository.load()
+        blink_enabled = self.blink_monitor_checkbox.isChecked()
+        if blink_enabled and not current.blink_monitor_enabled:
+            answer = QMessageBox.question(
+                self,
+                "Enable blink monitoring?",
+                "Blink monitoring uses your webcam on this device only. "
+                "No video or images are saved or sent anywhere. "
+                "Only per-minute blink estimates are stored. Enable it?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer is not QMessageBox.StandardButton.Yes:
+                self.blink_monitor_checkbox.setChecked(False)
+                return
         schedule = WorkHours(start, end, days) if days else None
-        updated_settings = replace(current, work_hours=schedule)
+        updated_settings = replace(
+            current,
+            work_hours=schedule,
+            blink_monitor_enabled=blink_enabled,
+            ui_theme=str(self.theme_choice.currentData()),
+            reduced_motion=self.reduced_motion_checkbox.isChecked(),
+        )
+        if self._autostart_provider is not None:
+            try:
+                if self.autostart_checkbox.isChecked():
+                    self._autostart_provider.enable()
+                else:
+                    self._autostart_provider.disable()
+            except OSError as error:
+                self.validation_label.setText(f"Could not update autostart: {error}")
+                return
         self._settings_repository.save(updated_settings)
         desired = {
             str(self.rule_list.item(i).data(Qt.ItemDataRole.UserRole)[0]): ContextRule(
@@ -190,3 +278,13 @@ class SettingsDialog(QDialog):
         self.settings_saved.emit(updated_settings)
         self.accept()
 
+    def set_blink_monitor_enabled(self, enabled: bool) -> None:
+        """Synchronize the visible consent toggle after a tray stop command."""
+        self.blink_monitor_checkbox.setChecked(enabled)
+
+    def set_theme(self, theme: str) -> None:
+        """Synchronize the selected theme after a settings change elsewhere."""
+        index = self.theme_choice.findData(theme)
+        if index < 0:
+            raise ValueError(f"Unsupported theme: {theme}")
+        self.theme_choice.setCurrentIndex(index)

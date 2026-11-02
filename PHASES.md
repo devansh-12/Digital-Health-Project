@@ -52,12 +52,12 @@
 
 **Goal:** Deliver the core novelty.
 
-- [ ] Routine JSON + player (6 × 10 s steps)
-- [ ] Animations per step (simple vector/Lottie-like; reduced-motion fallback)
-- [ ] Pause/exit, optional audio cue
-- [ ] Manual launch from tray; "Start Eye Yoga" from reminder
-- [ ] Log `yoga_sessions`
-- [ ] Review exercise wording (general relaxation guidance; add disclaimer)
+- [x] Routine JSON + player (6 × 10 s steps)
+- [x] Animations per step (simple vector/Lottie-like; reduced-motion fallback)
+- [x] Pause/exit, optional audio cue
+- [x] Manual launch from tray; "Start Eye Yoga" from reminder
+- [x] Log `yoga_sessions`
+- [x] Review exercise wording (general relaxation guidance; add disclaimer)
 
 **Gate:** 3 test users complete routine without help; average rating ≥ 4/5 for clarity.
 
@@ -67,12 +67,12 @@
 
 **Goal:** Insight and positive reinforcement.
 
-- [ ] Scoring engine + tests with edge cases (no breaks due, partial day)
-- [ ] Daily rollup job (at midnight and on app start for missed days)
-- [ ] Streaks with weekly freeze; badges
-- [ ] Dashboard: score ring, timeline, 7/30-day charts, longest stretch
-- [ ] Insight text generator
-- [ ] Export (CSV/JSON) + delete-all
+- [x] Scoring engine + tests with edge cases (no breaks due, partial day)
+- [x] Daily rollup job (at midnight and on app start for missed days)
+- [x] Streaks with weekly freeze; badges
+- [x] Dashboard: score ring, timeline, 7/30-day charts, longest stretch
+- [x] Insight text generator
+- [x] Export (CSV/JSON) + delete-all
 
 **Gate:** Simulated 30-day dataset produces correct scores/streaks; dashboard renders < 1 s.
 
@@ -82,11 +82,11 @@
 
 **Goal:** Privacy-safe blink-rate sensing.
 
-- [ ] Consent screen + tray camera indicator + kill switch
-- [ ] Vision worker process (OpenCV + MediaPipe), EAR computation
-- [ ] Calibration flow (10 s)
-- [ ] Blink state machine; per-minute aggregation → `blink_minutely`
-- [ ] Integrate blink component into score
+- [x] Consent screen + tray camera indicator + kill switch
+- [x] Vision worker process (OpenCV + MediaPipe), EAR computation
+- [x] Calibration flow (10 s)
+- [x] Blink state machine; per-minute aggregation → `blink_minutely`
+- [x] Integrate blink component into score
 - [ ] (P2) Adaptive reminder pull-forward
 - [ ] Verification: no images on disk, no network traffic
 
@@ -96,11 +96,11 @@
 
 ## Phase 6: Polish, Onboarding & Packaging (Week 9)
 
-- [ ] Onboarding (3 screens), privacy promise, "what we store" screen
-- [ ] Themes (dark/light), accessibility pass (keyboard, contrast, reduced motion)
-- [ ] Autostart toggle, crash recovery
+- [x] Onboarding (3 screens), privacy promise, "what we store" screen
+- [x] Themes (dark/light), accessibility pass (keyboard, contrast, reduced motion)
+- [x] Autostart toggle, crash recovery
 - [ ] PyInstaller build + clean-machine install test
-- [ ] README, user guide, demo video script
+- [x] README, user guide, demo video script
 
 **Gate:** Fresh Windows machine: install → first reminder in < 2 min.
 

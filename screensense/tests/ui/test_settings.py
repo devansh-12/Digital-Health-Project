@@ -4,12 +4,15 @@ import os
 
 import pytest
 from PyQt6.QtCore import QTime
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from screensense.core.context import ContextRule
+from screensense.platform_adapters.stub import StubAutostartProvider
 from screensense.storage.db import open_database
 from screensense.storage.repositories import ContextRulesRepository, SettingsRepository
+from screensense.ui.onboarding import OnboardingDialog
 from screensense.ui.settings import SettingsDialog
+from screensense.ui.theme import load_stylesheet
 
 
 @pytest.fixture(scope="module")
@@ -41,9 +44,85 @@ def test_settings_dialog_saves_schedule_and_process_rules(app, tmp_path) -> None
 
         assert settings_repo.load().work_hours is not None
         assert settings_repo.load().work_hours.weekdays == frozenset({0, 4})
-        assert rules_repo.load_all() == {
-            "videoplayer.exe": ContextRule.FULLSCREEN_OK
-        }
+        assert rules_repo.load_all() == {"videoplayer.exe": ContextRule.FULLSCREEN_OK}
         dialog.close()
     finally:
         connection.close()
+
+
+def test_settings_requires_consent_before_enabling_blink_monitoring(
+    app, tmp_path, monkeypatch
+) -> None:
+    connection = open_database(tmp_path / "blink-consent.sqlite3")
+    try:
+        settings_repo = SettingsRepository(connection)
+        dialog = SettingsDialog(settings_repo, ContextRulesRepository(connection))
+        dialog.blink_monitor_checkbox.setChecked(True)
+        monkeypatch.setattr(
+            QMessageBox,
+            "question",
+            lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
+        )
+
+        dialog.save_button.click()
+
+        assert settings_repo.load().blink_monitor_enabled is True
+        dialog.close()
+    finally:
+        connection.close()
+
+
+def test_onboarding_completes_three_steps_and_persists_camera_consent(
+    app, tmp_path
+) -> None:
+    connection = open_database(tmp_path / "onboarding.sqlite3")
+    try:
+        settings_repo = SettingsRepository(connection)
+        dialog = OnboardingDialog(settings_repo)
+        assert dialog._pages.count() == 3
+        dialog._continue_button.click()
+        dialog._continue_button.click()
+        dialog._blink_consent.setChecked(True)
+        dialog._continue_button.click()
+
+        settings = settings_repo.load()
+        assert settings.onboarding_completed
+        assert settings.blink_monitor_enabled
+    finally:
+        connection.close()
+
+
+def test_settings_persist_theme_accessibility_and_autostart_preferences(
+    app, tmp_path
+) -> None:
+    connection = open_database(tmp_path / "preferences.sqlite3")
+    try:
+        provider = StubAutostartProvider()
+        settings_repo = SettingsRepository(connection)
+        dialog = SettingsDialog(
+            settings_repo,
+            ContextRulesRepository(connection),
+            autostart_provider=provider,
+        )
+        dialog.theme_choice.setCurrentIndex(dialog.theme_choice.findData("light"))
+        dialog.reduced_motion_checkbox.setChecked(True)
+        dialog.autostart_checkbox.setChecked(True)
+        dialog.save_button.click()
+
+        settings = settings_repo.load()
+        assert settings.ui_theme == "light"
+        assert settings.reduced_motion
+        assert provider.is_enabled()
+        dialog.close()
+    finally:
+        connection.close()
+
+
+def test_light_and_dark_stylesheets_are_available() -> None:
+    assert "background-color: #1e1e1e" in load_stylesheet("dark")
+    assert "background-color: #F7FAF9" in load_stylesheet("light")
+
+
+def test_theme_loader_rejects_unknown_theme() -> None:
+    with pytest.raises(ValueError, match="Unsupported theme"):
+        load_stylesheet("sepia")

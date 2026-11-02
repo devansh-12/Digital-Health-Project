@@ -13,7 +13,10 @@ WARN = "#F4A261"
 DANGER = "#E76F51"
 
 
-def load_stylesheet() -> str:
-    """Read the bundled Qt stylesheet."""
-    stylesheet_path = Path(__file__).with_name("theme.qss")
+def load_stylesheet(theme: str = "dark") -> str:
+    """Read the bundled dark or light Qt stylesheet."""
+    if theme not in {"dark", "light"}:
+        raise ValueError(f"Unsupported theme: {theme}")
+    filename = "theme.qss" if theme == "dark" else "theme-light.qss"
+    stylesheet_path = Path(__file__).with_name(filename)
     return stylesheet_path.read_text(encoding="utf-8")

@@ -7,7 +7,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from screensense.platform_adapters.base import PowerEvent, Rect, WindowInfo
+from screensense.platform_adapters.base import PowerEvent, WindowInfo
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -47,8 +47,13 @@ class LinuxIdleProvider:
                     stderr=subprocess.DEVNULL,
                 ).strip()
                 return max(0.0, float(output) / 1000.0)
-            except Exception:
-                pass
+            except (
+                OSError,
+                ValueError,
+                subprocess.CalledProcessError,
+                subprocess.TimeoutExpired,
+            ):
+                _LOGGER.warning("Could not read Linux idle time", exc_info=True)
         return 0.0
 
 
@@ -94,7 +99,8 @@ class LinuxAutostartProvider:
 
     def __init__(self, command: str | None = None) -> None:
         """Initialize autostart provider with the startup command."""
-        self._command = command or f"{sys.executable} -m screensense.app"
+        python_executable = sys.executable.replace("\\", "\\\\").replace('"', '\\"')
+        self._command = command or f'"{python_executable}" -m screensense.app'
 
     @property
     def _desktop_file_path(self) -> Path:
