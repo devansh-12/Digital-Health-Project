@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
 from screensense.core.clock import Clock
 from screensense.core.events import BreakKind, ShowPrompt
 from screensense.ui.theme import MUTED, PRIMARY, TEXT
+from screensense.ui.tips import get_random_tip
 
 
 class CountdownRing(QWidget):
@@ -167,6 +168,12 @@ class BreakOverlay(QWidget):
         heading.addWidget(self.countdown_ring)
         layout.addLayout(heading)
 
+        self.tip_label = QLabel("", self)
+        self.tip_label.setObjectName("promptTip")
+        self.tip_label.setWordWrap(True)
+        self.tip_label.setStyleSheet("font-size: 12px; color: #858585; line-height: 1.4;")
+        layout.addWidget(self.tip_label)
+
         buttons = QGridLayout()
         buttons.setHorizontalSpacing(12)
         buttons.setVerticalSpacing(12)
@@ -233,6 +240,7 @@ class BreakOverlay(QWidget):
             if event is not None and event.message is not None
             else "Time to rest your eyes 👀"
         )
+        self.tip_label.setText(f"💡 {get_random_tip()}")
         self._countdown_seconds = float(min(60, self._break_duration_s))
         self.countdown_ring.reset(self._countdown_seconds)
         self._start_countdown()
