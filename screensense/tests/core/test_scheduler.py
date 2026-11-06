@@ -88,6 +88,26 @@ def test_snooze_reprompts_after_five_minutes(
     assert len(prompts) == (2 if snoozed_seconds == 300 else 1)
 
 
+def test_snooze_limit_enforced() -> None:
+    """When snooze limit is reached, snooze acts as skip and returns to WORKING."""
+    settings = Settings(snooze_limit_per_session=1)
+    scheduler, clock, _, prompts, _, skipped = make_scheduler(settings)
+    clock.advance(20 * 60)
+    scheduler.tick(ContextState.FREE)
+    assert scheduler.state is State.PROMPTING
+
+    scheduler.snooze()
+    assert scheduler.state is State.SNOOZED
+
+    clock.advance(300)
+    scheduler.tick(ContextState.FREE)
+    assert scheduler.state is State.PROMPTING
+
+    scheduler.snooze()
+    assert scheduler.state is State.WORKING
+    assert len(skipped) == 1
+
+
 def test_skip_returns_to_working_and_publishes_skip_event() -> None:
     """Skip a prompt without starting a break and publish the skip event."""
     scheduler, clock, _, prompts, _, skipped = make_scheduler(Settings())
@@ -357,7 +377,7 @@ def test_idle_at_least_break_length_counts_natural_break_and_resets_timer() -> N
 
 def test_on_demand_break_and_cancel() -> None:
     """Allow starting an on-demand break from working state and cancelling it."""
-    scheduler, clock, _, prompts, completed, _ = make_scheduler(
+    scheduler, _clock, _, _prompts, completed, _ = make_scheduler(
         Settings(work_interval_minutes=10)
     )
     assert scheduler.state is State.WORKING

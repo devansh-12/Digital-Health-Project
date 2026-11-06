@@ -1,8 +1,11 @@
+"""Application entry point and subsystem coordinator."""
+
 import logging
 import sys
 from dataclasses import replace
 from datetime import datetime
 from types import TracebackType
+from typing import Any
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
@@ -10,7 +13,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 from screensense.core.clock import Clock
 from screensense.core.config import Settings
 from screensense.core.context import ContextEvaluator, ContextInputs, ContextRule
-from screensense.core.events import EventBus
+from screensense.core.events import BreakKind, EventBus
 from screensense.core.scheduler import Scheduler, State
 from screensense.core.tracker import Tracker
 from screensense.platform_adapters.base import PowerEvent
@@ -35,7 +38,9 @@ from screensense.ui.eye_yoga.player import EyeYogaPlayer
 from screensense.ui.onboarding import OnboardingDialog
 from screensense.ui.overlay import BreakOverlay
 from screensense.ui.platform_event_bridge import PowerEventBridge
+from screensense.ui.quick_break import QuickBreakDialog
 from screensense.ui.settings import SettingsDialog
+from screensense.ui.stats_overlay import StatsOverlayWidget
 from screensense.ui.theme import load_stylesheet
 from screensense.ui.tray import ScreenSenseTray
 from screensense.ui.usage_flush import UsageFlushController
@@ -44,11 +49,229 @@ from screensense.vision.worker import VisionMonitorProcess
 _LOGGER = logging.getLogger(__name__)
 
 
+def handle_uncaught_exception(
+    exception_type: type[BaseException],
+    exception: BaseException,
+    traceback: TracebackType | None,
+) -> None:
+    """Log unhandled errors and notify user before terminating."""
+    _LOGGER.error(
+        "Unhandled application exception",
+        exc_info=(exception_type, exception, traceback),
+    )
+    QMessageBox.critical(
+        None,
+        "ScreenSense encountered a problem",
+        "ScreenSense encountered an unexpected problem. "
+        "A local diagnostic log was saved; restart the app to continue.",
+    )
+    app = QApplication.instance()
+    if app is not None:
+        app.quit()
+
+
+def get_foreground_process(providers: Any) -> str | None:
+    """Retrieve the name of the current foreground process without inline assignment."""
+    window = providers.window.foreground()
+    if window is not None:
+        return window.process
+    return None
+
+
+class PowerStateTracker:
+    """Track lock and sleep transitions."""
+
+    def __init__(self, usage_flush: UsageFlushController) -> None:
+        self.locked = False
+        self.asleep = False
+        self._usage_flush = usage_flush
+
+    def handle_transition(self, event: PowerEvent) -> None:
+        """Update local power flags and inform the usage flush controller."""
+        if event is PowerEvent.LOCK:
+            self.locked = True
+        elif event is PowerEvent.UNLOCK:
+            self.locked = False
+        elif event is PowerEvent.SLEEP:
+            self.asleep = True
+        elif event is PowerEvent.RESUME:
+            self.asleep = False
+        self._usage_flush.handle_power_event(event)
+
+
+class BreakSessionCoordinator:
+    """Coordinate Eye Yoga and timed quick break dialogs with the scheduler."""
+
+    def __init__(
+        self,
+        scheduler: Scheduler,
+        yoga_player: EyeYogaPlayer,
+        quick_break_dialog: QuickBreakDialog,
+        yoga_repository: YogaSessionsRepository,
+        clock: Clock,
+    ) -> None:
+        self._scheduler = scheduler
+        self._yoga_player = yoga_player
+        self._quick_break = quick_break_dialog
+        self._yoga_repo = yoga_repository
+        self._clock = clock
+        self._yoga_session_start = 0
+
+        self._yoga_player.session_completed.connect(self._on_yoga_completed)
+        self._yoga_player.session_exited.connect(self._on_yoga_exited)
+        self._quick_break.session_completed.connect(self._on_break_completed)
+        self._quick_break.session_exited.connect(self._on_break_exited)
+
+    def show_eye_yoga(self) -> None:
+        """Record session timestamp and display the Eye Yoga routine."""
+        self._yoga_session_start = int(self._clock.wall_time())
+        self._yoga_player.start()
+
+    def launch_eye_yoga(self) -> None:
+        """Begin an on-demand Eye Yoga break in the scheduler and show the player."""
+        self._scheduler.start_break(kind="yoga")
+        self.show_eye_yoga()
+
+    def show_scheduled_break(self, kind: BreakKind, duration_s: int) -> None:
+        """Display the timed break window for the prompt's chosen duration."""
+        self._quick_break.start(duration_s, kind=kind)
+
+    def _on_yoga_completed(self, done: int, total: int, duration_s: int) -> None:
+        self._yoga_repo.record_session(
+            started_at=self._yoga_session_start,
+            steps_completed=done,
+            total_steps=total,
+            duration_s=duration_s,
+        )
+        if self._scheduler.state is State.ON_BREAK:
+            self._scheduler.complete_break(duration_s=duration_s)
+
+    def _on_yoga_exited(self, done: int, total: int, duration_s: int) -> None:
+        self._yoga_repo.record_session(
+            started_at=self._yoga_session_start,
+            steps_completed=done,
+            total_steps=total,
+            duration_s=duration_s,
+        )
+        if self._scheduler.state is State.ON_BREAK:
+            self._scheduler.cancel_break()
+
+    def _on_break_completed(self, duration_s: int) -> None:
+        if self._scheduler.state is State.ON_BREAK:
+            self._scheduler.complete_break(duration_s=duration_s)
+
+    def _on_break_exited(self) -> None:
+        if self._scheduler.state is State.ON_BREAK:
+            self._scheduler.cancel_break()
+
+
+class BlinkMonitorController:
+    """Manage lifecycle and background messages for the webcam vision worker."""
+
+    def __init__(
+        self,
+        tray: ScreenSenseTray,
+        settings_dialog: SettingsDialog,
+        settings_repository: SettingsRepository,
+        blink_repository: BlinkMetricsRepository,
+        stats_overlay: StatsOverlayWidget,
+    ) -> None:
+        self._monitor: VisionMonitorProcess | None = None
+        self._tray = tray
+        self._settings_dialog = settings_dialog
+        self._settings_repository = settings_repository
+        self._blink_repository = blink_repository
+        self._stats_overlay = stats_overlay
+
+    def start(self) -> None:
+        """Launch the worker process if not already running."""
+        if self._monitor is not None:
+            return
+        monitor = VisionMonitorProcess()
+        try:
+            monitor.start()
+        except (AssertionError, OSError, RuntimeError) as error:
+            self._tray.show_message(
+                "Blink monitoring could not start",
+                str(error),
+                QSystemTrayIcon.MessageIcon.Warning,
+            )
+            self._settings_dialog.set_blink_monitor_enabled(False)
+            self._settings_repository.save(
+                replace(self._settings_repository.load(), blink_monitor_enabled=False)
+            )
+            return
+        self._monitor = monitor
+        self._tray.set_camera_active(True, "Starting")
+
+    def stop(self, *, persist_disabled: bool) -> None:
+        """Halt the vision process and update tray/dialog states."""
+        if self._monitor is not None:
+            self._monitor.stop()
+            self._monitor = None
+        self._tray.set_camera_active(False)
+        self._settings_dialog.set_blink_monitor_enabled(False)
+        if persist_disabled:
+            current = self._settings_repository.load()
+            if current.blink_monitor_enabled:
+                self._settings_repository.save(
+                    replace(current, blink_monitor_enabled=False)
+                )
+
+    def poll(self) -> None:
+        """Process pending message batches from the vision monitor."""
+        if self._monitor is None:
+            return
+        for message in self._monitor.read_messages():
+            if self._handle_message(message):
+                return
+        if not self._monitor.is_running:
+            self.stop(persist_disabled=True)
+            self._tray.show_message(
+                "Blink monitoring stopped",
+                "The vision worker exited unexpectedly. You can try enabling it again in Settings.",
+                QSystemTrayIcon.MessageIcon.Warning,
+            )
+
+    def _handle_message(self, message: dict[str, Any]) -> bool:
+        msg_type = message.get("type")
+        if msg_type == "status":
+            self._tray.set_camera_active(True, str(message["status"]).title())
+        elif msg_type == "metrics":
+            self._record_metrics(message["metrics"])
+        elif msg_type == "error":
+            self.stop(persist_disabled=True)
+            self._tray.show_message(
+                "Blink monitoring stopped",
+                str(message["message"]),
+                QSystemTrayIcon.MessageIcon.Warning,
+            )
+            return True
+        return False
+
+    def _record_metrics(self, values: dict[str, Any]) -> None:
+        blinks_count = int(values["blinks"])
+        self._stats_overlay.update_blink_rate(blinks_count)
+        self._blink_repository.record_minute(
+            BlinkMinuteRecord(
+                minute_start=int(values["minute_start"]),
+                blinks=blinks_count,
+                face_present_ratio=float(values["face_present_ratio"]),
+                ear_mean=(
+                    float(values["ear_mean"])
+                    if values.get("ear_mean") is not None
+                    else None
+                ),
+            )
+        )
+
+
 def main() -> int:
     """Create the scheduler, overlay, tray, and Qt event loop."""
     app = QApplication([])
     app.setApplicationName("ScreenSense")
     app.setQuitOnLastWindowClosed(False)
+    sys.excepthook = handle_uncaught_exception
 
     event_bus = EventBus()
     clock: Clock = SystemClock()
@@ -61,99 +284,56 @@ def main() -> int:
         format="%(asctime)s %(levelname)s %(message)s",
     )
 
-    def handle_uncaught_exception(
-        exception_type: type[BaseException],
-        exception: BaseException,
-        traceback: TracebackType | None,
-    ) -> None:
-        _LOGGER.error(
-            "Unhandled application exception",
-            exc_info=(exception_type, exception, traceback),
-        )
-        QMessageBox.critical(
-            None,
-            "ScreenSense encountered a problem",
-            "ScreenSense encountered an unexpected problem. "
-            "A local diagnostic log was saved; restart the app to continue.",
-        )
-        app.quit()
-
-    sys.excepthook = handle_uncaught_exception
-    breaks_repository = BreaksRepository(database)
-    settings_repository = SettingsRepository(database)
-    rules_repository = ContextRulesRepository(database)
-    usage_repository = UsageHourlyRepository(
+    breaks_repo = BreaksRepository(database)
+    settings_repo = SettingsRepository(database)
+    rules_repo = ContextRulesRepository(database)
+    usage_repo = UsageHourlyRepository(
         connection_factory=lambda: open_database(database_path)
     )
-    startup_settings = settings_repository.load()
+
+    startup_settings = settings_repo.load()
     if not startup_settings.onboarding_completed:
-        OnboardingDialog(settings_repository).exec()
-        startup_settings = settings_repository.load()
+        OnboardingDialog(settings_repo).exec()
+        startup_settings = settings_repo.load()
+
     app.setStyleSheet(load_stylesheet(startup_settings.ui_theme))
     settings_dialog = SettingsDialog(
-        settings_repository,
-        rules_repository,
+        settings_repo,
+        rules_repo,
         autostart_provider=providers.autostart,
     )
     scheduler = Scheduler(
-        settings_repository.load(),
+        startup_settings,
         clock,
         event_bus,
-        breaks_repository=breaks_repository,
+        breaks_repository=breaks_repo,
     )
-    vision_monitor: list[VisionMonitorProcess | None] = [None]
     tracker = Tracker(clock)
     overlay = BreakOverlay(clock)
-    yoga_repository = YogaSessionsRepository(database)
     yoga_player = EyeYogaPlayer(
         clock=clock,
         reduced_motion=startup_settings.reduced_motion,
         theme=startup_settings.ui_theme,
     )
-    yoga_session_start = [0]
+    quick_break_dialog = QuickBreakDialog(clock)
 
-    def launch_eye_yoga() -> None:
-        yoga_session_start[0] = int(clock.wall_time())
-        scheduler.start_break(kind="yoga")
-        yoga_player.start()
+    break_coordinator = BreakSessionCoordinator(
+        scheduler=scheduler,
+        yoga_player=yoga_player,
+        quick_break_dialog=quick_break_dialog,
+        yoga_repository=YogaSessionsRepository(database),
+        clock=clock,
+    )
 
-    def handle_yoga_completed(
-        steps_done: int, total_steps: int, duration_s: int
-    ) -> None:
-        yoga_repository.record_session(
-            started_at=yoga_session_start[0],
-            steps_completed=steps_done,
-            total_steps=total_steps,
-            duration_s=duration_s,
-        )
-        if scheduler.state is State.ON_BREAK:
-            scheduler.complete_break(duration_s=duration_s)
-
-    def handle_yoga_exited(steps_done: int, total_steps: int, duration_s: int) -> None:
-        yoga_repository.record_session(
-            started_at=yoga_session_start[0],
-            steps_completed=steps_done,
-            total_steps=total_steps,
-            duration_s=duration_s,
-        )
-        if scheduler.state is State.ON_BREAK:
-            scheduler.cancel_break()
-
-    yoga_player.session_completed.connect(handle_yoga_completed)
-    yoga_player.session_exited.connect(handle_yoga_exited)
-
-    scores_repository = DailyScoresRepository(database)
-    streaks_repository = StreaksRepository(database)
-    badges_repository = BadgesRepository(database)
     dashboard_window = DashboardWindow(
         database=database,
-        settings_repo=settings_repository,
-        breaks_repo=breaks_repository,
-        yoga_repo=yoga_repository,
-        usage_repo=usage_repository,
-        scores_repo=scores_repository,
-        streaks_repo=streaks_repository,
-        badges_repo=badges_repository,
+        settings_repo=settings_repo,
+        breaks_repo=breaks_repo,
+        yoga_repo=YogaSessionsRepository(database),
+        usage_repo=usage_repo,
+        scores_repo=DailyScoresRepository(database),
+        streaks_repo=StreaksRepository(database),
+        badges_repo=BadgesRepository(database),
         blink_repo=BlinkMetricsRepository(database),
         settings_dialog=settings_dialog,
         clock=clock,
@@ -165,47 +345,32 @@ def main() -> int:
         dashboard_window.raise_()
         dashboard_window.activateWindow()
 
+    stats_overlay = StatsOverlayWidget()
+
+    def toggle_stats_overlay() -> None:
+        if stats_overlay.isVisible():
+            stats_overlay.hide()
+        else:
+            stats_overlay.show()
+
+    blink_controller = BlinkMonitorController(
+        tray=None,  # will set below
+        settings_dialog=settings_dialog,
+        settings_repository=settings_repo,
+        blink_repository=BlinkMetricsRepository(database),
+        stats_overlay=stats_overlay,
+    )
+
     tray = ScreenSenseTray(
         on_quit=app.quit,
         on_settings=settings_dialog.show,
-        on_eye_yoga=launch_eye_yoga,
+        on_eye_yoga=break_coordinator.launch_eye_yoga,
         on_dashboard=show_dashboard,
-        on_stop_blink_monitor=lambda: stop_blink_monitor(persist_disabled=True),
+        on_stop_blink_monitor=lambda: blink_controller.stop(persist_disabled=True),
+        on_toggle_stats=toggle_stats_overlay,
         parent=app,
     )
-    blink_repository = BlinkMetricsRepository(database)
-
-    def stop_blink_monitor(*, persist_disabled: bool) -> None:
-        monitor = vision_monitor[0]
-        if monitor is not None:
-            monitor.stop()
-            vision_monitor[0] = None
-        tray.set_camera_active(False)
-        settings_dialog.set_blink_monitor_enabled(False)
-        if persist_disabled:
-            current = settings_repository.load()
-            if current.blink_monitor_enabled:
-                settings_repository.save(replace(current, blink_monitor_enabled=False))
-
-    def start_blink_monitor() -> None:
-        if vision_monitor[0] is not None:
-            return
-        monitor = VisionMonitorProcess()
-        try:
-            monitor.start()
-        except (AssertionError, OSError, RuntimeError) as error:
-            tray.show_message(
-                "Blink monitoring could not start",
-                str(error),
-                QSystemTrayIcon.MessageIcon.Warning,
-            )
-            settings_dialog.set_blink_monitor_enabled(False)
-            settings_repository.save(
-                replace(settings_repository.load(), blink_monitor_enabled=False)
-            )
-            return
-        vision_monitor[0] = monitor
-        tray.set_camera_active(True, "Starting")
+    blink_controller._tray = tray
 
     def on_settings_saved(updated_settings: Settings) -> None:
         scheduler.update_settings(updated_settings)
@@ -214,111 +379,58 @@ def main() -> int:
         dashboard_window.set_theme(updated_settings.ui_theme)
         yoga_player.set_theme(updated_settings.ui_theme)
         yoga_player.set_reduced_motion(updated_settings.reduced_motion)
+        overlay.set_snooze_minutes(updated_settings.snooze_minutes)
         if updated_settings.blink_monitor_enabled:
-            start_blink_monitor()
+            blink_controller.start()
         else:
-            stop_blink_monitor(persist_disabled=False)
+            blink_controller.stop(persist_disabled=False)
 
     settings_dialog.settings_saved.connect(on_settings_saved)
 
-    def poll_blink_monitor() -> None:
-        monitor = vision_monitor[0]
-        if monitor is None:
-            return
-        messages = monitor.read_messages()
-        for message in messages:
-            if message["type"] == "status":
-                tray.set_camera_active(True, str(message["status"]).title())
-            elif message["type"] == "metrics":
-                values = message["metrics"]
-                blink_repository.record_minute(
-                    BlinkMinuteRecord(
-                        minute_start=int(values["minute_start"]),
-                        blinks=int(values["blinks"]),
-                        face_present_ratio=float(values["face_present_ratio"]),
-                        ear_mean=(
-                            float(values["ear_mean"])
-                            if values["ear_mean"] is not None
-                            else None
-                        ),
-                    )
-                )
-            elif message["type"] == "error":
-                error = str(message["message"])
-                stop_blink_monitor(persist_disabled=True)
-                tray.show_message(
-                    "Blink monitoring stopped",
-                    error,
-                    QSystemTrayIcon.MessageIcon.Warning,
-                )
-                return
-        if not monitor.is_running:
-            stop_blink_monitor(persist_disabled=True)
-            tray.show_message(
-                "Blink monitoring stopped",
-                "The vision worker exited unexpectedly. You can try enabling it again in Settings.",
-                QSystemTrayIcon.MessageIcon.Warning,
-            )
-
     blink_poll_timer = QTimer(app)
     blink_poll_timer.setInterval(250)
-    blink_poll_timer.timeout.connect(poll_blink_monitor)
+    blink_poll_timer.timeout.connect(blink_controller.poll)
     blink_poll_timer.start()
-    if settings_repository.load().blink_monitor_enabled:
-        start_blink_monitor()
+
+    if startup_settings.blink_monitor_enabled:
+        blink_controller.start()
+
     ui_bridge = SchedulerUiBridge(
         event_bus,
         scheduler,
         overlay,
         tray,
-        current_process=lambda: (
-            window.process
-            if (window := providers.window.foreground()) is not None
-            else None
-        ),
-        allow_process=lambda process: rules_repository.set_rule(
-            process, ContextRule.ALLOW
-        ),
-        on_start_yoga=launch_eye_yoga,
+        current_process=lambda: get_foreground_process(providers),
+        allow_process=lambda process: rules_repo.set_rule(process, ContextRule.ALLOW),
+        on_start_yoga=break_coordinator.show_eye_yoga,
+        on_start_break=break_coordinator.show_scheduled_break,
         parent=app,
     )
-    usage_flush = UsageFlushController(tracker, usage_repository, parent=app)
+    overlay.set_snooze_minutes(startup_settings.snooze_minutes)
+    usage_flush = UsageFlushController(tracker, usage_repo, parent=app)
 
-    power_state = {"locked": False, "asleep": False}
-
-    def handle_power_transition(event: PowerEvent) -> None:
-        if event is PowerEvent.LOCK:
-            power_state["locked"] = True
-        elif event is PowerEvent.UNLOCK:
-            power_state["locked"] = False
-        elif event is PowerEvent.SLEEP:
-            power_state["asleep"] = True
-        elif event is PowerEvent.RESUME:
-            power_state["asleep"] = False
-        usage_flush.handle_power_event(event)
-
-    power_bridge = PowerEventBridge(handle_power_transition, parent=app)
+    power_tracker = PowerStateTracker(usage_flush)
+    power_bridge = PowerEventBridge(power_tracker.handle_transition, parent=app)
     providers.power.subscribe(power_bridge.enqueue)
     providers.power.start()
 
-    evaluator = ContextEvaluator(clock, rules_repository, event_bus)
+    evaluator = ContextEvaluator(clock, rules_repo, event_bus)
 
     def on_tick() -> None:
-        current_settings = settings_repository.load()
-        idle_s = providers.idle.seconds_since_input()
-        window = providers.window.foreground()
+        current_settings = settings_repo.load()
         inputs = ContextInputs(
-            locked=power_state["locked"],
-            asleep=power_state["asleep"],
+            locked=power_tracker.locked,
+            asleep=power_tracker.asleep,
             now=datetime.fromtimestamp(clock.wall_time()),
             work_hours=current_settings.work_hours,
-            idle_seconds=idle_s,
+            idle_seconds=providers.idle.seconds_since_input(),
             idle_threshold=float(current_settings.idle_threshold_seconds),
-            window=window,
+            window=providers.window.foreground(),
         )
         context = evaluator.evaluate(inputs)
         tracker.sample(context)
         scheduler.tick(context)
+        stats_overlay.update_active_time(round(scheduler.work_elapsed))
 
     tick_timer = QTimer(app)
     tick_timer.setInterval(1000)
@@ -327,8 +439,10 @@ def main() -> int:
 
     app.aboutToQuit.connect(tick_timer.stop)
     app.aboutToQuit.connect(blink_poll_timer.stop)
-    app.aboutToQuit.connect(lambda: stop_blink_monitor(persist_disabled=False))
+    app.aboutToQuit.connect(lambda: blink_controller.stop(persist_disabled=False))
+    app.aboutToQuit.connect(stats_overlay.close)
     app.aboutToQuit.connect(yoga_player.close)
+    app.aboutToQuit.connect(quick_break_dialog.close)
     app.aboutToQuit.connect(tray.close)
     app.aboutToQuit.connect(settings_dialog.close)
     app.aboutToQuit.connect(ui_bridge.close)

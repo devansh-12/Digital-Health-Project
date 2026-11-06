@@ -16,6 +16,7 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import (
     QApplication,
+    QGraphicsDropShadowEffect,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -25,8 +26,9 @@ from PyQt6.QtWidgets import (
 )
 
 from screensense.core.clock import Clock
-from screensense.core.events import ShowPrompt
+from screensense.core.events import BreakKind, ShowPrompt
 from screensense.ui.theme import MUTED, PRIMARY, TEXT
+from screensense.ui.tips import get_random_tip
 
 
 class CountdownRing(QWidget):
@@ -107,7 +109,7 @@ class BreakOverlay(QWidget):
     COUNTDOWN_SECONDS = 20.0
 
     eye_yoga_requested = pyqtSignal()
-    quick_break_requested = pyqtSignal()
+    break_requested = pyqtSignal()
     snooze_requested = pyqtSignal()
     skip_requested = pyqtSignal()
     dismissed = pyqtSignal()
@@ -122,8 +124,12 @@ class BreakOverlay(QWidget):
         )
         super().__init__(parent, flags)
         self._clock = clock
+        self._countdown_seconds = self.COUNTDOWN_SECONDS
         self._countdown_started_at: float | None = None
         self._current_process = ""
+        self._break_kind: BreakKind = "quick"
+        self._break_duration_s = 20
+        self._snooze_minutes = 5
         self.setObjectName("breakOverlay")
         self.setAccessibleName("ScreenSense break reminder")
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -132,6 +138,12 @@ class BreakOverlay(QWidget):
 
         self._build_layout()
         self._connect_actions()
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(20)
+        shadow.setOffset(0, 4)
+        shadow.setColor(QColor(0, 0, 0, 160))
+        self.setGraphicsEffect(shadow)
+
         self._escape_shortcut = QShortcut(QKeySequence("Esc"), self)
         self._escape_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self._escape_shortcut.activated.connect(self._dismiss)
@@ -152,9 +164,15 @@ class BreakOverlay(QWidget):
         self.prompt_label.setWordWrap(True)
         heading.addWidget(self.prompt_label, 1)
 
-        self.countdown_ring = CountdownRing(self.COUNTDOWN_SECONDS, self)
+        self.countdown_ring = CountdownRing(self._countdown_seconds, self)
         heading.addWidget(self.countdown_ring)
         layout.addLayout(heading)
+
+        self.tip_label = QLabel("", self)
+        self.tip_label.setObjectName("promptTip")
+        self.tip_label.setWordWrap(True)
+        self.tip_label.setStyleSheet("font-size: 12px; color: #858585; line-height: 1.4;")
+        layout.addWidget(self.tip_label)
 
         buttons = QGridLayout()
         buttons.setHorizontalSpacing(12)
@@ -186,7 +204,7 @@ class BreakOverlay(QWidget):
     def _connect_actions(self) -> None:
         """Connect each button to its action signal and close the card."""
         self.eye_yoga_button.clicked.connect(self._request_eye_yoga)
-        self.quick_break_button.clicked.connect(self._request_quick_break)
+        self.quick_break_button.clicked.connect(self._request_break)
         self.snooze_button.clicked.connect(self._request_snooze)
         self.skip_button.clicked.connect(self._request_skip)
         self.not_now_button.clicked.connect(self._dismiss)
@@ -202,20 +220,54 @@ class BreakOverlay(QWidget):
 
     def show_prompt(self, event: ShowPrompt | None = None) -> None:
         """Reset the 20-second countdown and show the prompt without activation."""
+        self._break_kind = event.kind if event is not None else "quick"
+        if event is not None and event.duration_s is not None:
+            if event.duration_s < 1:
+                raise ValueError("prompt duration_s must be positive")
+            self._break_duration_s = event.duration_s
+        else:
+            self._break_duration_s = 20
+        if self._break_kind == "long":
+            minutes = max(1, round(self._break_duration_s / 60))
+            self.quick_break_button.setText(f"Long break ({minutes} min)")
+        else:
+            self.quick_break_button.setText(
+                f"Quick break ({self._break_duration_s}s)"
+            )
+        self.snooze_button.setText(f"Snooze {self._snooze_minutes} min")
         self.prompt_label.setText(
             event.message
             if event is not None and event.message is not None
             else "Time to rest your eyes 👀"
         )
+        self.tip_label.setText(f"💡 {get_random_tip()}")
+        self._countdown_seconds = float(min(60, self._break_duration_s))
+        self.countdown_ring.reset(self._countdown_seconds)
         self._start_countdown()
         self.show()
+
+    @property
+    def break_kind(self) -> BreakKind:
+        """Return the type of break requested by the current prompt."""
+        return self._break_kind
+
+    @property
+    def break_duration_s(self) -> int:
+        """Return the current scheduled break duration."""
+        return self._break_duration_s
+
+    def set_snooze_minutes(self, minutes: int) -> None:
+        """Set the duration shown on the snooze action."""
+        if isinstance(minutes, bool) or not isinstance(minutes, int) or minutes < 1:
+            raise ValueError("minutes must be a positive integer")
+        self._snooze_minutes = minutes
 
     def refresh_countdown(self) -> None:
         """Refresh the ring from monotonic time without dismissing at zero."""
         if self._countdown_started_at is None:
             return
         elapsed = max(0.0, self._clock.monotonic() - self._countdown_started_at)
-        remaining = max(0.0, self.COUNTDOWN_SECONDS - elapsed)
+        remaining = max(0.0, self._countdown_seconds - elapsed)
         self.countdown_ring.set_remaining_seconds(remaining)
         if remaining == 0.0:
             self._countdown_timer.stop()
@@ -252,7 +304,7 @@ class BreakOverlay(QWidget):
     def _start_countdown(self) -> None:
         """Start a fresh countdown from the injected monotonic clock."""
         self._countdown_started_at = self._clock.monotonic()
-        self.countdown_ring.set_remaining_seconds(self.COUNTDOWN_SECONDS)
+        self.countdown_ring.set_remaining_seconds(self._countdown_seconds)
         self._countdown_timer.start()
 
     def _dismiss(self) -> None:
@@ -265,9 +317,9 @@ class BreakOverlay(QWidget):
         self.eye_yoga_requested.emit()
         self.close()
 
-    def _request_quick_break(self) -> None:
-        """Emit the quick-break action and close the card."""
-        self.quick_break_requested.emit()
+    def _request_break(self) -> None:
+        """Emit the selected break action and close the card."""
+        self.break_requested.emit()
         self.close()
 
     def _request_snooze(self) -> None:

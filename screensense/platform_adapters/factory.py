@@ -2,6 +2,7 @@
 
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 from screensense.platform_adapters.base import (
     AppDataProvider,
@@ -66,7 +67,6 @@ def get_platform_providers() -> PlatformProviders:
         StubPowerProvider,
         StubWindowProvider,
     )
-    from pathlib import Path
 
     return PlatformProviders(
         app_data=StubAppDataProvider(Path.home() / ".screensense"),

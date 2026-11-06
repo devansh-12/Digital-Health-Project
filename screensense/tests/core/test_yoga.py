@@ -1,6 +1,6 @@
 """Test Eye Yoga domain structures and default routine."""
 
-from screensense.core.yoga import DEFAULT_EYE_YOGA_ROUTINE, YogaRoutine, YogaStep
+from screensense.core.yoga import DEFAULT_EYE_YOGA_ROUTINE, YogaStep
 
 
 def test_default_routine_structure() -> None:

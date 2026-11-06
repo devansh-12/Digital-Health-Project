@@ -22,6 +22,7 @@ class SettingsKey(StrEnum):
     ONBOARDING_COMPLETED = "onboarding_completed"
     UI_THEME = "ui_theme"
     REDUCED_MOTION = "reduced_motion"
+    SNOOZE_LIMIT_PER_SESSION = "snooze_limit_per_session"
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +58,7 @@ class Settings:
     onboarding_completed: bool = False
     ui_theme: str = "dark"
     reduced_motion: bool = False
+    snooze_limit_per_session: int = 0
 
     def __post_init__(self) -> None:
         """Reject values outside the supported settings ranges."""
@@ -78,6 +80,11 @@ class Settings:
             SettingsKey.IDLE_THRESHOLD_SECONDS, self.idle_threshold_seconds
         )
         self._validate_integer(SettingsKey.SNOOZE_MINUTES, self.snooze_minutes)
+        self._validate_integer(
+            SettingsKey.SNOOZE_LIMIT_PER_SESSION,
+            self.snooze_limit_per_session,
+            minimum=0,
+        )
         self._validate_positive_number(
             SettingsKey.SCREEN_GOAL_HOURS, self.screen_goal_hours
         )
@@ -117,6 +124,7 @@ class Settings:
             SettingsKey.ONBOARDING_COMPLETED: self.onboarding_completed,
             SettingsKey.UI_THEME: self.ui_theme,
             SettingsKey.REDUCED_MOTION: self.reduced_motion,
+            SettingsKey.SNOOZE_LIMIT_PER_SESSION: self.snooze_limit_per_session,
         }
 
     @staticmethod

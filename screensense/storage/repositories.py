@@ -98,6 +98,7 @@ class SettingsRepository:
             onboarding_completed=bool(values[SettingsKey.ONBOARDING_COMPLETED]),
             ui_theme=str(values[SettingsKey.UI_THEME]),
             reduced_motion=bool(values[SettingsKey.REDUCED_MOTION]),
+            snooze_limit_per_session=int(values[SettingsKey.SNOOZE_LIMIT_PER_SESSION]),
         )
 
     @staticmethod

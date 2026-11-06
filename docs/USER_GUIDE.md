@@ -19,10 +19,14 @@ requires the optional dependencies described below.
 ## Everyday use
 
 - Open the tray menu and choose **Open Dashboard** to view the daily score, activity,
-  streak, and trends.
+  streak, and switch between 7-day and 30-day trends.
 - Choose **Start Eye Yoga (60s)** for a guided session.
 - Use **Settings** to choose work hours, app rules, light/dark theme, reduced motion,
-  optional blink monitoring, and sign-in autostart.
+  optional blink monitoring, sign-in autostart, and break timing. Work intervals,
+  quick breaks, long-break duration and frequency, and snooze duration are configurable.
+- When a reminder appears, choose Eye Yoga or the scheduled quick/long break. Timed
+  breaks complete automatically; use **End break** or Escape to cancel and return to work.
+  **Not now**, Skip, and Escape on a reminder dismiss that prompt and resume scheduling.
 - If monitoring is active, a camera indicator appears on the tray icon. Choose
   **Stop Blink Monitoring** to stop webcam use immediately.
 

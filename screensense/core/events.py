@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, TypeVar, cast
 
 if TYPE_CHECKING:
@@ -21,6 +21,7 @@ class ShowPrompt:
 
     kind: BreakKind
     message: str | None = None
+    duration_s: int | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,6 +1,7 @@
 """Test keyboard-accessible work-hours and process-rule settings."""
 
 import os
+from dataclasses import replace
 
 import pytest
 from PyQt6.QtCore import QTime
@@ -29,6 +30,12 @@ def test_settings_dialog_saves_schedule_and_process_rules(app, tmp_path) -> None
         settings_repo = SettingsRepository(connection)
         rules_repo = ContextRulesRepository(connection)
         dialog = SettingsDialog(settings_repo, rules_repo)
+        dialog.work_interval.setValue(30)
+        dialog.break_duration.setValue(45)
+        dialog.long_break_duration.setValue(8)
+        dialog.long_break_every.setValue(4)
+        dialog.snooze_duration.setValue(8)
+        dialog.snooze_limit.setValue(3)
         for button in dialog.day_checks:
             button.setChecked(False)
         dialog.day_checks[0].setChecked(True)
@@ -44,6 +51,12 @@ def test_settings_dialog_saves_schedule_and_process_rules(app, tmp_path) -> None
 
         assert settings_repo.load().work_hours is not None
         assert settings_repo.load().work_hours.weekdays == frozenset({0, 4})
+        assert settings_repo.load().work_interval_minutes == 30
+        assert settings_repo.load().quick_break_seconds == 45
+        assert settings_repo.load().long_break_minutes == 8
+        assert settings_repo.load().long_break_every == 4
+        assert settings_repo.load().snooze_minutes == 8
+        assert settings_repo.load().snooze_limit_per_session == 3
         assert rules_repo.load_all() == {"videoplayer.exe": ContextRule.FULLSCREEN_OK}
         dialog.close()
     finally:
@@ -113,6 +126,32 @@ def test_settings_persist_theme_accessibility_and_autostart_preferences(
         assert settings.ui_theme == "light"
         assert settings.reduced_motion
         assert provider.is_enabled()
+        dialog.close()
+    finally:
+        connection.close()
+
+
+def test_timing_controls_load_saved_values(app, tmp_path) -> None:
+    connection = open_database(tmp_path / "timing-controls.sqlite3")
+    try:
+        settings_repo = SettingsRepository(connection)
+        settings_repo.save(
+            replace(
+                settings_repo.load(),
+                work_interval_minutes=35,
+                quick_break_seconds=40,
+                long_break_minutes=12,
+                long_break_every=5,
+                snooze_minutes=7,
+            )
+        )
+        dialog = SettingsDialog(settings_repo, ContextRulesRepository(connection))
+
+        assert dialog.work_interval.value() == 35
+        assert dialog.break_duration.value() == 40
+        assert dialog.long_break_duration.value() == 12
+        assert dialog.long_break_every.value() == 5
+        assert dialog.snooze_duration.value() == 7
         dialog.close()
     finally:
         connection.close()

@@ -4,6 +4,7 @@ import multiprocessing
 import queue
 import time
 from multiprocessing.synchronize import Event
+from pathlib import Path
 from typing import Any
 
 from screensense.vision.blink import (
@@ -19,6 +20,60 @@ FACE_PRESENT_GOOD_MINUTE = 0.5
 GOOD_BLINKS_PER_MINUTE = 12
 
 
+class FaceLandmarkDetector:
+    """Extract face landmarks using modern MediaPipe Tasks or legacy solutions."""
+
+    def __init__(self, model_path: str | None = None) -> None:
+        import mediapipe as mp
+
+        self._legacy = hasattr(mp, "solutions")
+        if self._legacy:
+            self._detector = mp.solutions.face_mesh.FaceMesh(
+                max_num_faces=1,
+                refine_landmarks=False,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5,
+            )
+        else:
+            from mediapipe.tasks import python
+            from mediapipe.tasks.python import vision
+
+            if model_path is None:
+                model_path = str(
+                    Path(__file__).parent / "models" / "face_landmarker.task"
+                )
+            base_options = python.BaseOptions(model_asset_path=model_path)
+            options = vision.FaceLandmarkerOptions(
+                base_options=base_options,
+                output_face_blendshapes=False,
+                num_faces=1,
+            )
+            self._detector = vision.FaceLandmarker.create_from_options(options)
+
+    def process(self, rgb_frame: Any) -> list[tuple[float, float]] | None:
+        """Process an RGB frame and return a list of 478 (x, y) normalized landmark points."""
+        import mediapipe as mp
+
+        if self._legacy:
+            result = self._detector.process(rgb_frame)
+            if result.multi_face_landmarks:
+                face = result.multi_face_landmarks[0]
+                return [(float(point.x), float(point.y)) for point in face.landmark]
+            return None
+
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        result = self._detector.detect(mp_image)
+        if result.face_landmarks:
+            face = result.face_landmarks[0]
+            return [(float(point.x), float(point.y)) for point in face]
+        return None
+
+    def close(self) -> None:
+        """Release underlying detector resources."""
+        if hasattr(self._detector, "close"):
+            self._detector.close()
+
+
 def run_vision_worker(
     stop_event: Event,
     output_queue: Any,
@@ -29,18 +84,12 @@ def run_vision_worker(
     face_mesh = None
     try:
         import cv2
-        import mediapipe as mp
 
         camera = cv2.VideoCapture(camera_index)
         camera.set(cv2.CAP_PROP_FPS, SAMPLE_FPS)
         if not camera.isOpened():
             raise RuntimeError("The camera could not be opened.")
-        face_mesh = mp.solutions.face_mesh.FaceMesh(
-            max_num_faces=1,
-            refine_landmarks=False,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5,
-        )
+        face_mesh = FaceLandmarkDetector()
         output_queue.put({"type": "status", "status": "calibrating"})
 
         calibrator = BlinkCalibrator()
@@ -71,13 +120,10 @@ def run_vision_worker(
             current_minute = minute
 
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            result = face_mesh.process(rgb_frame)
+            landmarks = face_mesh.process(rgb_frame)
             ear: float | None = None
-            if result.multi_face_landmarks:
-                face = result.multi_face_landmarks[0]
-                ear = calculate_face_ear(
-                    [(float(point.x), float(point.y)) for point in face.landmark]
-                )
+            if landmarks:
+                ear = calculate_face_ear(landmarks)
 
             if detector is None:
                 baseline = calibrator.add(ear, now)
@@ -93,7 +139,7 @@ def run_vision_worker(
                 accumulator.add(ear, blink)
 
             last_frame_at = frame_started
-            del frame, rgb_frame, result
+            del frame, rgb_frame, landmarks
 
         if accumulator is not None:
             _publish_minute(output_queue, accumulator.finish())
@@ -132,7 +178,10 @@ class VisionMonitorProcess:
 
     @property
     def is_running(self) -> bool:
-        return self._process.is_alive()
+        try:
+            return self._process.is_alive()
+        except ValueError:
+            return False
 
     def start(self) -> None:
         """Start monitoring once; raise if the process has already been started."""

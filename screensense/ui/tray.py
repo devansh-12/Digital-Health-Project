@@ -28,6 +28,7 @@ class ScreenSenseTray:
         on_eye_yoga: Callable[[], None] | None = None,
         on_dashboard: Callable[[], None] | None = None,
         on_stop_blink_monitor: Callable[[], None] | None = None,
+        on_toggle_stats: Callable[[], None] | None = None,
         parent: QObject | None = None,
     ) -> None:
         self._icon = QSystemTrayIcon(parent)
@@ -40,6 +41,10 @@ class ScreenSenseTray:
             eye_yoga_action = QAction("Start Eye Yoga (60s)", self._menu)
             eye_yoga_action.triggered.connect(lambda _checked=False: on_eye_yoga())
             self._menu.addAction(eye_yoga_action)
+        if on_toggle_stats is not None:
+            stats_action = QAction("Toggle Stats HUD", self._menu)
+            stats_action.triggered.connect(lambda _checked=False: on_toggle_stats())
+            self._menu.addAction(stats_action)
         if on_settings is not None:
             settings_action = QAction("Settings", self._menu)
             settings_action.triggered.connect(lambda _checked=False: on_settings())

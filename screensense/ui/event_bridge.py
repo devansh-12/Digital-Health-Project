@@ -6,6 +6,7 @@ from PyQt6.QtCore import QObject, Qt, pyqtSignal, pyqtSlot
 
 from screensense.core.events import (
     BreakCompleted,
+    BreakKind,
     BreakSkipped,
     EventBus,
     ShowPrompt,
@@ -30,6 +31,7 @@ class SchedulerUiBridge(QObject):
         current_process: Callable[[], str | None] | None = None,
         allow_process: Callable[[str], None] | None = None,
         on_start_yoga: Callable[[], None] | None = None,
+        on_start_break: Callable[[BreakKind, int], None] | None = None,
         parent: QObject | None = None,
     ) -> None:
         """Subscribe to core events and connect overlay actions."""
@@ -40,6 +42,7 @@ class SchedulerUiBridge(QObject):
         self._current_process = current_process
         self._allow_process = allow_process
         self._on_start_yoga = on_start_yoga
+        self._on_start_break = on_start_break
         self._closed = False
         self.event_received.connect(
             self._handle_event, Qt.ConnectionType.QueuedConnection
@@ -51,9 +54,10 @@ class SchedulerUiBridge(QObject):
         ]
 
         overlay.eye_yoga_requested.connect(self._start_yoga)
-        overlay.quick_break_requested.connect(self._start_quick_break)
+        overlay.break_requested.connect(self._start_break)
         overlay.snooze_requested.connect(self._snooze)
         overlay.skip_requested.connect(scheduler.skip)
+        overlay.dismissed.connect(scheduler.skip)
         if allow_process is not None:
             overlay.always_allow_here_requested.connect(allow_process)
 
@@ -65,9 +69,10 @@ class SchedulerUiBridge(QObject):
             unsubscribe()
         self._subscriptions.clear()
         self._overlay.eye_yoga_requested.disconnect(self._start_yoga)
-        self._overlay.quick_break_requested.disconnect(self._start_quick_break)
+        self._overlay.break_requested.disconnect(self._start_break)
         self._overlay.snooze_requested.disconnect(self._snooze)
         self._overlay.skip_requested.disconnect(self._scheduler.skip)
+        self._overlay.dismissed.disconnect(self._scheduler.skip)
         if self._allow_process is not None:
             self._overlay.always_allow_here_requested.disconnect(self._allow_process)
         self._closed = True
@@ -97,10 +102,14 @@ class SchedulerUiBridge(QObject):
         if self._on_start_yoga is not None:
             self._on_start_yoga()
 
-    def _start_quick_break(self) -> None:
-        """Start a quick break and restore the tray's active status."""
-        self._scheduler.start_break(kind="quick")
+    def _start_break(self) -> None:
+        """Start the scheduled break and restore the tray's active status."""
+        kind = self._overlay.break_kind
+        duration_s = self._overlay.break_duration_s
+        self._scheduler.start_break(kind=kind)
         self._tray.set_status(TrayStatus.ACTIVE)
+        if self._on_start_break is not None:
+            self._on_start_break(kind, duration_s)
 
     def _snooze(self) -> None:
         """Snooze the scheduler prompt and mark reminders as suppressed."""

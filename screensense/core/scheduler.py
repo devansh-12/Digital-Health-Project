@@ -70,6 +70,7 @@ class Scheduler:
         self._last_context = ContextState.FREE
         self._work_elapsed = 0.0
         self._completed_breaks = 0
+        self._snooze_count = 0
         self._prompt_queued = False
         self._queued_for_suppression = False
         self._suppressed_recorded = False
@@ -90,6 +91,23 @@ class Scheduler:
     def tick(self, context: ContextState) -> None:
         """Advance timers and evaluate context; call every 1-2 seconds and on changes."""
         now = self._clock.monotonic()
+        self._accumulate_work_time(now)
+        self._update_idle_break(context, now)
+
+        if not self._should_evaluate_interval(context, now):
+            self._last_context = context
+            return
+
+        if self._prompt_queued or self._work_elapsed >= self._interval_seconds():
+            self._dispatch_prompt(context)
+        elif context is not ContextState.FREE:
+            self._state = State.SUPPRESS
+        else:
+            self._state = State.WORKING
+
+        self._last_context = context
+
+    def _accumulate_work_time(self, now: float) -> None:
         elapsed = max(0.0, now - self._last_tick)
         if (
             self._state in (State.WORKING, State.SUPPRESS)
@@ -99,55 +117,39 @@ class Scheduler:
             self._work_elapsed += elapsed
         self._last_tick = now
 
-        self._update_idle_break(context, now)
+    def _should_evaluate_interval(self, context: ContextState, now: float) -> bool:
         if self._idle_break_counted and context is ContextState.IDLE:
-            self._last_context = context
-            return
-
+            return False
         if self._state is State.ON_BREAK:
-            self._last_context = context
-            return
-
+            return False
         if self._state is State.PROMPTING:
             if context is not ContextState.FREE:
                 self._queue_suppressed_prompt()
                 self._state = State.SUPPRESS
-            self._last_context = context
-            return
-
+            return False
         if self._state is State.SNOOZED:
             if self._snooze_until is not None and now >= self._snooze_until:
                 self._prompt_queued = True
                 self._snooze_until = None
-            else:
-                self._last_context = context
-                return
+                return True
+            return False
+        return True
 
-        if self._prompt_queued:
-            if context is ContextState.FREE:
-                self._show_prompt()
-            else:
-                self._queue_suppressed_prompt()
-                self._state = State.SUPPRESS
-            self._last_context = context
-            return
-
-        if self._work_elapsed >= self._interval_seconds():
-            if context is ContextState.FREE:
-                self._show_prompt()
-            else:
-                self._queue_suppressed_prompt()
-                self._state = State.SUPPRESS
-        elif context is not ContextState.FREE:
-            self._state = State.SUPPRESS
+    def _dispatch_prompt(self, context: ContextState) -> None:
+        if context is ContextState.FREE:
+            self._show_prompt()
         else:
-            self._state = State.WORKING
-
-        self._last_context = context
+            self._queue_suppressed_prompt()
+            self._state = State.SUPPRESS
 
     def snooze(self) -> None:
         """Snooze the visible prompt for the configured duration."""
         self._require_state(State.PROMPTING)
+        limit = self._settings.snooze_limit_per_session
+        if limit > 0 and self._snooze_count >= limit:
+            self.skip()
+            return
+        self._snooze_count += 1
         now = self._clock.monotonic()
         self._snooze_until = now + self._settings.snooze_minutes * 60
         self._last_tick = now
@@ -210,6 +212,11 @@ class Scheduler:
         """Replace settings while preserving elapsed work time."""
         self._settings = settings
 
+    @property
+    def work_elapsed(self) -> float:
+        """Return the accumulated work duration in seconds for the current interval."""
+        return self._work_elapsed
+
     def _update_idle_break(self, context: ContextState, now: float) -> None:
         if self._state is State.ON_BREAK:
             self._idle_since = None
@@ -262,7 +269,14 @@ class Scheduler:
         self._suppressed_recorded = False
         self._snooze_until = None
         self._state = State.PROMPTING
-        self._event_bus.publish(ShowPrompt(kind=kind, message=message))
+        duration_s = (
+            self._settings.long_break_minutes * 60
+            if kind == "long"
+            else self._settings.quick_break_seconds
+        )
+        self._event_bus.publish(
+            ShowPrompt(kind=kind, message=message, duration_s=duration_s)
+        )
 
     def _queue_suppressed_prompt(self) -> None:
         """Queue one due reminder and persist its suppression once."""
@@ -293,6 +307,7 @@ class Scheduler:
     def _begin_work_interval(self) -> None:
         self._state = State.WORKING
         self._work_elapsed = 0.0
+        self._snooze_count = 0
         self._prompt_queued = False
         self._queued_for_suppression = False
         self._suppressed_recorded = False

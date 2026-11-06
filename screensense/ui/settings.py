@@ -14,6 +14,8 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QScrollArea,
+    QSpinBox,
     QTimeEdit,
     QVBoxLayout,
     QWidget,
@@ -49,11 +51,75 @@ class SettingsDialog(QDialog):
     def _build_ui(self) -> None:
         """Create schedule controls, rule list, and inline validation."""
         self.setObjectName("settingsDialog")
-        layout = QVBoxLayout(self)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_area = QScrollArea(self)
+        scroll_area.setObjectName("settingsScrollArea")
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll_area.viewport().setObjectName("settingsViewport")
+        content = QWidget(scroll_area)
+        content.setObjectName("settingsContent")
+        content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(22, 22, 22, 22)
         layout.setSpacing(12)
         self.setAccessibleName("ScreenSense settings")
-        self.setMinimumSize(440, 640)
+        self.setMinimumSize(440, 520)
+        timing_label = QLabel("Break timing", self)
+        timing_label.setObjectName("settingsSectionHeading")
+        layout.addWidget(timing_label)
+        timing_fields = QHBoxLayout()
+        timing_fields.setSpacing(10)
+
+        self.work_interval = QSpinBox(self)
+        self.work_interval.setRange(10, 60)
+        self.work_interval.setSuffix(" min")
+        self.work_interval.setAccessibleName("Work interval in minutes")
+        self.break_duration = QSpinBox(self)
+        self.break_duration.setRange(10, 60)
+        self.break_duration.setSuffix(" sec")
+        self.break_duration.setAccessibleName("Quick break duration in seconds")
+        self.snooze_duration = QSpinBox(self)
+        self.snooze_duration.setRange(1, 60)
+        self.snooze_duration.setSuffix(" min")
+        self.snooze_duration.setAccessibleName("Snooze duration in minutes")
+        self.long_break_duration = QSpinBox(self)
+        self.long_break_duration.setRange(1, 120)
+        self.long_break_duration.setSuffix(" min")
+        self.long_break_duration.setAccessibleName("Long break duration in minutes")
+        self.long_break_every = QSpinBox(self)
+        self.long_break_every.setRange(1, 20)
+        self.long_break_every.setSuffix(" breaks")
+        self.long_break_every.setAccessibleName("Long break frequency")
+        self.snooze_limit = QSpinBox(self)
+        self.snooze_limit.setRange(0, 20)
+        self.snooze_limit.setSpecialValueText("Unlimited")
+        self.snooze_limit.setAccessibleName("Max snoozes per break interval (0 = unlimited)")
+        timing_groups = (
+            (
+                ("Work interval", self.work_interval),
+                ("Quick break", self.break_duration),
+                ("Snooze", self.snooze_duration),
+            ),
+            (
+                ("Long break", self.long_break_duration),
+                ("Long break every", self.long_break_every),
+                ("Max snoozes", self.snooze_limit),
+            ),
+        )
+        for group in timing_groups:
+            row = QHBoxLayout()
+            row.setSpacing(10)
+            for label, control in group:
+                field = QVBoxLayout()
+                lbl = QLabel(label, self)
+                lbl.setObjectName("settingsFieldLabel")
+                field.addWidget(lbl)
+                field.addWidget(control)
+                row.addLayout(field)
+            layout.addLayout(row)
+
         self.day_checks: list[QPushButton] = []
         days = QHBoxLayout()
         days.setSpacing(6)
@@ -147,18 +213,23 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.rule_list)
         layout.addWidget(self.blink_monitor_checkbox)
         layout.addWidget(self.blink_privacy_label)
-        layout.addWidget(QLabel("Appearance", self))
+        appearance_label = QLabel("Appearance", self)
+        appearance_label.setObjectName("settingsSectionHeading")
+        layout.addWidget(appearance_label)
         layout.addWidget(self.theme_choice)
         layout.addWidget(self.reduced_motion_checkbox)
         layout.addWidget(self.autostart_checkbox)
         layout.addWidget(self.autostart_help)
         layout.addWidget(self.validation_label)
+        scroll_area.setWidget(content)
+        root_layout.addWidget(scroll_area, 1)
         footer = QHBoxLayout()
         footer.setSpacing(10)
+        footer.setContentsMargins(22, 10, 22, 16)
         footer.addStretch(1)
         footer.addWidget(self.cancel_button)
         footer.addWidget(self.save_button)
-        layout.addLayout(footer)
+        root_layout.addLayout(footer)
         self.add_rule_button.clicked.connect(self._add_rule)
         self.remove_rule_button.clicked.connect(self._remove_rule)
         self.save_button.clicked.connect(self._save)
@@ -167,6 +238,12 @@ class SettingsDialog(QDialog):
     def _load_values(self) -> None:
         """Populate controls from the current local settings and process rules."""
         settings = self._settings_repository.load()
+        self.work_interval.setValue(settings.work_interval_minutes)
+        self.break_duration.setValue(settings.quick_break_seconds)
+        self.long_break_duration.setValue(settings.long_break_minutes)
+        self.long_break_every.setValue(settings.long_break_every)
+        self.snooze_duration.setValue(settings.snooze_minutes)
+        self.snooze_limit.setValue(settings.snooze_limit_per_session)
         self.blink_monitor_checkbox.setChecked(settings.blink_monitor_enabled)
         self.theme_choice.setCurrentIndex(
             max(0, self.theme_choice.findData(settings.ui_theme))
@@ -249,6 +326,12 @@ class SettingsDialog(QDialog):
         schedule = WorkHours(start, end, days) if days else None
         updated_settings = replace(
             current,
+            work_interval_minutes=self.work_interval.value(),
+            quick_break_seconds=self.break_duration.value(),
+            long_break_minutes=self.long_break_duration.value(),
+            long_break_every=self.long_break_every.value(),
+            snooze_minutes=self.snooze_duration.value(),
+            snooze_limit_per_session=self.snooze_limit.value(),
             work_hours=schedule,
             blink_monitor_enabled=blink_enabled,
             ui_theme=str(self.theme_choice.currentData()),
