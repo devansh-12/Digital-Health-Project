@@ -35,6 +35,7 @@ from screensense.ui.eye_yoga.player import EyeYogaPlayer
 from screensense.ui.onboarding import OnboardingDialog
 from screensense.ui.overlay import BreakOverlay
 from screensense.ui.platform_event_bridge import PowerEventBridge
+from screensense.ui.quick_break import QuickBreakDialog
 from screensense.ui.settings import SettingsDialog
 from screensense.ui.theme import load_stylesheet
 from screensense.ui.tray import ScreenSenseTray
@@ -110,12 +111,19 @@ def main() -> int:
         reduced_motion=startup_settings.reduced_motion,
         theme=startup_settings.ui_theme,
     )
+    quick_break_dialog = QuickBreakDialog(clock)
     yoga_session_start = [0]
 
-    def launch_eye_yoga() -> None:
+    def show_eye_yoga() -> None:
         yoga_session_start[0] = int(clock.wall_time())
-        scheduler.start_break(kind="yoga")
         yoga_player.start()
+
+    def launch_eye_yoga() -> None:
+        scheduler.start_break(kind="yoga")
+        show_eye_yoga()
+
+    def show_quick_break() -> None:
+        quick_break_dialog.start(settings_repository.load().quick_break_seconds)
 
     def handle_yoga_completed(
         steps_done: int, total_steps: int, duration_s: int
@@ -141,6 +149,17 @@ def main() -> int:
 
     yoga_player.session_completed.connect(handle_yoga_completed)
     yoga_player.session_exited.connect(handle_yoga_exited)
+
+    def handle_quick_break_completed(duration_s: int) -> None:
+        if scheduler.state is State.ON_BREAK:
+            scheduler.complete_break(duration_s=duration_s)
+
+    def handle_quick_break_exited() -> None:
+        if scheduler.state is State.ON_BREAK:
+            scheduler.cancel_break()
+
+    quick_break_dialog.session_completed.connect(handle_quick_break_completed)
+    quick_break_dialog.session_exited.connect(handle_quick_break_exited)
 
     scores_repository = DailyScoresRepository(database)
     streaks_repository = StreaksRepository(database)
@@ -279,7 +298,8 @@ def main() -> int:
         allow_process=lambda process: rules_repository.set_rule(
             process, ContextRule.ALLOW
         ),
-        on_start_yoga=launch_eye_yoga,
+        on_start_yoga=show_eye_yoga,
+        on_start_quick_break=show_quick_break,
         parent=app,
     )
     usage_flush = UsageFlushController(tracker, usage_repository, parent=app)
@@ -329,6 +349,7 @@ def main() -> int:
     app.aboutToQuit.connect(blink_poll_timer.stop)
     app.aboutToQuit.connect(lambda: stop_blink_monitor(persist_disabled=False))
     app.aboutToQuit.connect(yoga_player.close)
+    app.aboutToQuit.connect(quick_break_dialog.close)
     app.aboutToQuit.connect(tray.close)
     app.aboutToQuit.connect(settings_dialog.close)
     app.aboutToQuit.connect(ui_bridge.close)

@@ -14,6 +14,8 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QScrollArea,
+    QSpinBox,
     QTimeEdit,
     QVBoxLayout,
     QWidget,
@@ -49,11 +51,46 @@ class SettingsDialog(QDialog):
     def _build_ui(self) -> None:
         """Create schedule controls, rule list, and inline validation."""
         self.setObjectName("settingsDialog")
-        layout = QVBoxLayout(self)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_area = QScrollArea(self)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+        content = QWidget(scroll_area)
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(22, 22, 22, 22)
         layout.setSpacing(12)
         self.setAccessibleName("ScreenSense settings")
-        self.setMinimumSize(440, 640)
+        self.setMinimumSize(440, 520)
+        timing_label = QLabel("Break timing", self)
+        timing_label.setObjectName("settingsSectionHeading")
+        layout.addWidget(timing_label)
+        timing_fields = QHBoxLayout()
+        timing_fields.setSpacing(10)
+
+        self.work_interval = QSpinBox(self)
+        self.work_interval.setRange(10, 60)
+        self.work_interval.setSuffix(" min")
+        self.work_interval.setAccessibleName("Work interval in minutes")
+        self.break_duration = QSpinBox(self)
+        self.break_duration.setRange(10, 60)
+        self.break_duration.setSuffix(" sec")
+        self.break_duration.setAccessibleName("Quick break duration in seconds")
+        self.snooze_duration = QSpinBox(self)
+        self.snooze_duration.setRange(1, 60)
+        self.snooze_duration.setSuffix(" min")
+        self.snooze_duration.setAccessibleName("Snooze duration in minutes")
+        for label, control in (
+            ("Work interval", self.work_interval),
+            ("Quick break", self.break_duration),
+            ("Snooze", self.snooze_duration),
+        ):
+            field = QVBoxLayout()
+            field.addWidget(QLabel(label, self))
+            field.addWidget(control)
+            timing_fields.addLayout(field)
+        layout.addLayout(timing_fields)
+
         self.day_checks: list[QPushButton] = []
         days = QHBoxLayout()
         days.setSpacing(6)
@@ -153,12 +190,14 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.autostart_checkbox)
         layout.addWidget(self.autostart_help)
         layout.addWidget(self.validation_label)
+        scroll_area.setWidget(content)
+        root_layout.addWidget(scroll_area, 1)
         footer = QHBoxLayout()
         footer.setSpacing(10)
         footer.addStretch(1)
         footer.addWidget(self.cancel_button)
         footer.addWidget(self.save_button)
-        layout.addLayout(footer)
+        root_layout.addLayout(footer)
         self.add_rule_button.clicked.connect(self._add_rule)
         self.remove_rule_button.clicked.connect(self._remove_rule)
         self.save_button.clicked.connect(self._save)
@@ -167,6 +206,9 @@ class SettingsDialog(QDialog):
     def _load_values(self) -> None:
         """Populate controls from the current local settings and process rules."""
         settings = self._settings_repository.load()
+        self.work_interval.setValue(settings.work_interval_minutes)
+        self.break_duration.setValue(settings.quick_break_seconds)
+        self.snooze_duration.setValue(settings.snooze_minutes)
         self.blink_monitor_checkbox.setChecked(settings.blink_monitor_enabled)
         self.theme_choice.setCurrentIndex(
             max(0, self.theme_choice.findData(settings.ui_theme))
@@ -249,6 +291,9 @@ class SettingsDialog(QDialog):
         schedule = WorkHours(start, end, days) if days else None
         updated_settings = replace(
             current,
+            work_interval_minutes=self.work_interval.value(),
+            quick_break_seconds=self.break_duration.value(),
+            snooze_minutes=self.snooze_duration.value(),
             work_hours=schedule,
             blink_monitor_enabled=blink_enabled,
             ui_theme=str(self.theme_choice.currentData()),

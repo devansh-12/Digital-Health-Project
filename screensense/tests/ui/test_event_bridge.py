@@ -12,6 +12,7 @@ from screensense.core.events import EventBus
 from screensense.core.scheduler import Scheduler, State
 from screensense.ui.event_bridge import SchedulerUiBridge
 from screensense.ui.overlay import BreakOverlay
+from screensense.ui.quick_break import QuickBreakDialog
 from screensense.ui.tray import ScreenSenseTray, TrayStatus
 
 
@@ -101,3 +102,37 @@ def test_eye_yoga_button_triggers_on_start_yoga(app: QApplication) -> None:
     tray.close()
     overlay.close()
 
+
+def test_quick_break_button_runs_timed_break_to_completion(app: QApplication) -> None:
+    clock = FakeClock()
+    event_bus = EventBus()
+    scheduler = Scheduler(Settings(work_interval_minutes=10), clock, event_bus)
+    overlay = BreakOverlay(clock)
+    tray = ScreenSenseTray(lambda: None, parent=app)
+    dialog = QuickBreakDialog(clock)
+    dialog.session_completed.connect(scheduler.complete_break)
+    bridge = SchedulerUiBridge(
+        event_bus,
+        scheduler,
+        overlay,
+        tray,
+        on_start_quick_break=lambda: dialog.start(20),
+        parent=app,
+    )
+
+    clock.advance(10 * 60)
+    scheduler.tick(ContextState.FREE)
+    overlay.quick_break_button.click()
+
+    assert scheduler.state is State.ON_BREAK
+    assert dialog.isVisible()
+    clock.advance(20)
+    dialog._on_tick()
+
+    assert scheduler.state is State.WORKING
+    assert not dialog.isVisible()
+
+    bridge.close()
+    tray.close()
+    overlay.close()
+    dialog.close()
