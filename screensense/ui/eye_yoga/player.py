@@ -282,7 +282,7 @@ class EyeYogaPlayer(QWidget):
             self.session_completed.emit(
                 len(self._routine.steps),
                 len(self._routine.steps),
-                int(round(self._total_elapsed_s)),
+                round(self._total_elapsed_s),
             )
             self.close()
             return
@@ -302,7 +302,7 @@ class EyeYogaPlayer(QWidget):
         self._timer.stop()
         completed = self._current_step_index
         total = len(self._routine.steps)
-        self.session_exited.emit(completed, total, int(round(self._total_elapsed_s)))
+        self.session_exited.emit(completed, total, round(self._total_elapsed_s))
         self.close()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:

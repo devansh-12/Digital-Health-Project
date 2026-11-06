@@ -1,9 +1,9 @@
 import pytest
 
 from screensense.vision.blink import (
+    EAR_EYE_INDICES,
     BlinkCalibrator,
     BlinkDetector,
-    EAR_EYE_INDICES,
     MinuteAccumulator,
     calculate_face_ear,
 )

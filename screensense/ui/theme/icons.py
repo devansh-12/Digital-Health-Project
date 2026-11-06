@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QByteArray, QSize, Qt
+from PyQt6.QtCore import QByteArray, Qt
 from PyQt6.QtGui import QIcon, QPainter, QPixmap
 from PyQt6.QtSvg import QSvgRenderer
 

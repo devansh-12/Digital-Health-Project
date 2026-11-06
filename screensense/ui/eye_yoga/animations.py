@@ -1,11 +1,12 @@
 """Paint gentle vector animations for guided Eye Yoga exercises."""
 
 import math
+
 from PyQt6.QtCore import QPointF, QRectF, Qt, QTimer
 from PyQt6.QtGui import QColor, QPainter, QPaintEvent, QPen
 from PyQt6.QtWidgets import QWidget
 
-from screensense.ui.theme import ACCENT, CALM, MUTED, PRIMARY, TEXT
+from screensense.ui.theme import ACCENT, CALM, PRIMARY
 
 
 class EyeYogaAnimationWidget(QWidget):

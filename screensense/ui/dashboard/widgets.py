@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QPointF, QRectF, Qt
+from PyQt6.QtCore import QRectF, Qt
 from PyQt6.QtGui import QColor, QFont, QPainter, QPaintEvent, QPen
 from PyQt6.QtWidgets import QWidget
 

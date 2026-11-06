@@ -357,7 +357,7 @@ def test_idle_at_least_break_length_counts_natural_break_and_resets_timer() -> N
 
 def test_on_demand_break_and_cancel() -> None:
     """Allow starting an on-demand break from working state and cancelling it."""
-    scheduler, clock, _, prompts, completed, _ = make_scheduler(
+    scheduler, _clock, _, _prompts, completed, _ = make_scheduler(
         Settings(work_interval_minutes=10)
     )
     assert scheduler.state is State.WORKING
