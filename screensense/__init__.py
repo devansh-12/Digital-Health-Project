@@ -1,0 +1,1 @@
+"""ScreenSense desktop application package."""

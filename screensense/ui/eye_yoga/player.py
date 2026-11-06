@@ -62,7 +62,6 @@ class EyeYogaPlayer(QWidget):
         self._timer.timeout.connect(self._on_tick)
 
     def _build_ui(self) -> None:
-        self.setStyleSheet("background-color: #000000; color: #ffffff;")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 20, 28, 24)
         layout.setSpacing(16)
@@ -259,13 +258,17 @@ class EyeYogaPlayer(QWidget):
         self._anim_widget.hide()
         self._countdown_ring.hide()
 
+        dark = self._theme == "dark"
+        title_color = "#ffffff" if dark else "#14201E"
+        body_color = "#dddddd" if dark else "#2c2c2c"
+
         self._step_title.setText("Rest complete")
         self._step_title.setStyleSheet(
-            "font-size: 26px; font-weight: 600; letter-spacing: 1px; color: #ffffff;"
+            f"font-size: 26px; font-weight: 600; letter-spacing: 1px; color: {title_color};"
         )
         self._step_instruction.setText("Your eyes are refreshed.")
         self._step_instruction.setStyleSheet(
-            "font-size: 16px; font-weight: 500; color: #dddddd;"
+            f"font-size: 16px; font-weight: 500; color: {body_color};"
         )
         self._step_counter.setText(
             " ".join("●" for _ in range(len(self._routine.steps)))

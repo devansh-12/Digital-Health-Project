@@ -7,11 +7,17 @@ from screensense.ui.theme import ACCENT, PRIMARY
 
 
 class ScoreGaugeWidget(QWidget):
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, theme: str = "dark", parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._theme = theme
         self._score = 0
         self._band = ScoreBand.REST_YOUR_EYES
         self.setFixedSize(130, 130)
+
+    def set_theme(self, theme: str) -> None:
+        """Update the colour palette and repaint."""
+        self._theme = theme
+        self.update()
 
     def set_score(self, score: int, band: ScoreBand) -> None:
         self._score = max(0, min(100, score))
@@ -25,7 +31,8 @@ class ScoreGaugeWidget(QWidget):
 
         rect = QRectF(10.0, 10.0, self.width() - 20.0, self.height() - 20.0)
 
-        track_pen = QPen(QColor("#2d2d2d"), 8.0)
+        track_color = "#2d2d2d" if self._theme == "dark" else "#D8E3E0"
+        track_pen = QPen(QColor(track_color), 8.0)
         painter.setPen(track_pen)
         painter.drawEllipse(rect)
 
@@ -44,7 +51,8 @@ class ScoreGaugeWidget(QWidget):
         painter.setPen(arc_pen)
         painter.drawArc(rect, 90 * 16, -round(360 * 16 * fraction))
 
-        painter.setPen(QColor("#ffffff"))
+        score_text_color = "#ffffff" if self._theme == "dark" else "#14201E"
+        painter.setPen(QColor(score_text_color))
         font_score = QFont()
         font_score.setPointSize(24)
         font_score.setWeight(QFont.Weight.Bold)
@@ -70,10 +78,16 @@ class ScoreGaugeWidget(QWidget):
 
 
 class TodayTimelineWidget(QWidget):
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, theme: str = "dark", parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._theme = theme
         self.setMinimumHeight(80)
         self._hourly_data: list[tuple[int, int]] = []
+
+    def set_theme(self, theme: str) -> None:
+        """Update the colour palette and repaint."""
+        self._theme = theme
+        self.update()
 
     def set_data(self, hourly_data: list[tuple[int, int]]) -> None:
         self._hourly_data = hourly_data
@@ -103,7 +117,8 @@ class TodayTimelineWidget(QWidget):
             bar_h = fraction * max_bar_h
 
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor("#2d2d2d"))
+            empty_color = "#2d2d2d" if self._theme == "dark" else "#E8F3F0"
+            painter.setBrush(QColor(empty_color))
             painter.drawRoundedRect(QRectF(x, chart_top, bar_w, max_bar_h), 1.5, 1.5)
 
             if bar_h > 0:
@@ -113,7 +128,8 @@ class TodayTimelineWidget(QWidget):
                 )
 
             if hour in (0, 6, 12, 18, 23):
-                painter.setPen(QColor("#666666"))
+                label_color = "#666666" if self._theme == "dark" else "#5B6B68"
+                painter.setPen(QColor(label_color))
                 font = QFont()
                 font.setPointSize(8)
                 painter.setFont(font)
@@ -127,13 +143,18 @@ class TodayTimelineWidget(QWidget):
 
 
 class WeeklyTrendChartWidget(QWidget):
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, theme: str = "dark", parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._theme = theme
         self.setMinimumHeight(80)
         self._data: list[tuple[str, int]] = []
 
+    def set_theme(self, theme: str) -> None:
+        self._theme = theme
+        self.update()
+
     def set_data(self, data: list[tuple[str, int]]) -> None:
-        self._data = data[-7:]
+        self._data = data
         self.update()
 
     def paintEvent(self, event: QPaintEvent) -> None:
@@ -145,7 +166,8 @@ class WeeklyTrendChartWidget(QWidget):
         h = float(self.height())
         count = len(self._data)
         if count == 0:
-            painter.setPen(QColor("#666666"))
+            empty_color = "#666666" if self._theme == "dark" else "#5B6B68"
+            painter.setPen(QColor(empty_color))
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No score history")
             painter.end()
             return
@@ -163,7 +185,8 @@ class WeeklyTrendChartWidget(QWidget):
             y = chart_bottom - bar_len
 
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor("#2d2d2d"))
+            bg_bar_color = "#2d2d2d" if self._theme == "dark" else "#E8F3F0"
+            painter.setBrush(QColor(bg_bar_color))
             painter.drawRoundedRect(QRectF(x, chart_top, bar_w, max_h), 2.5, 2.5)
 
             is_today = (i == count - 1)
@@ -171,16 +194,22 @@ class WeeklyTrendChartWidget(QWidget):
             painter.setBrush(bar_color)
             painter.drawRoundedRect(QRectF(x, y, bar_w, bar_len), 2.5, 2.5)
 
-            painter.setPen(QColor("#ffffff" if is_today else "#777777"))
+            text_color = (
+                ("#ffffff" if is_today else "#777777")
+                if self._theme == "dark"
+                else ("#14201E" if is_today else "#5B6B68")
+            )
+            painter.setPen(QColor(text_color))
             font = QFont()
             font.setPointSize(8)
             if is_today:
                 font.setWeight(QFont.Weight.Bold)
             painter.setFont(font)
-            painter.drawText(
-                QRectF(x_center - 16, chart_bottom + 3, 32, 16),
-                Qt.AlignmentFlag.AlignCenter,
-                day_lbl,
-            )
+            if count <= 10 or i % 5 == 0 or i == count - 1:
+                painter.drawText(
+                    QRectF(x_center - 16, chart_bottom + 3, 32, 16),
+                    Qt.AlignmentFlag.AlignCenter,
+                    day_lbl,
+                )
 
         painter.end()

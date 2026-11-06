@@ -54,6 +54,18 @@ def test_overlay_displays_queued_recovery_copy(overlay: BreakOverlay) -> None:
     assert overlay.prompt_label.text() == "Time to rest your eyes 👀"
 
 
+def test_overlay_uses_scheduled_break_duration_and_snooze_setting(
+    overlay: BreakOverlay,
+) -> None:
+    overlay.set_snooze_minutes(8)
+    overlay.show_prompt(ShowPrompt(kind="long", duration_s=300))
+
+    assert overlay.quick_break_button.text() == "Long break (5 min)"
+    assert overlay.break_kind == "long"
+    assert overlay.break_duration_s == 300
+    assert overlay.snooze_button.text() == "Snooze 8 min"
+
+
 def test_always_allow_action_emits_only_current_process_name(
     overlay: BreakOverlay,
 ) -> None:
@@ -84,7 +96,7 @@ def test_overlay_is_frameless_topmost_and_does_not_activate_on_show(
     ("button_name", "signal_name"),
     [
         ("eye_yoga_button", "eye_yoga_requested"),
-        ("quick_break_button", "quick_break_requested"),
+        ("quick_break_button", "break_requested"),
         ("snooze_button", "snooze_requested"),
         ("skip_button", "skip_requested"),
     ],

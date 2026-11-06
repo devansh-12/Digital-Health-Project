@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 )
 
 from screensense.core.clock import Clock
+from screensense.core.events import BreakKind
 from screensense.ui.overlay import CountdownRing
 
 
@@ -27,6 +28,7 @@ class QuickBreakDialog(QDialog):
         self._duration_s = 0
         self._started_at = 0.0
         self._active = False
+        self._title_label: QLabel
 
         self.setWindowTitle("ScreenSense — Quick break")
         self.setAccessibleName("ScreenSense quick break")
@@ -37,10 +39,10 @@ class QuickBreakDialog(QDialog):
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(16)
 
-        title = QLabel("Rest your eyes", self)
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size: 22px; font-weight: 600;")
-        layout.addWidget(title)
+        self._title_label = QLabel("Rest your eyes", self)
+        self._title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._title_label.setStyleSheet("font-size: 22px; font-weight: 600;")
+        layout.addWidget(self._title_label)
 
         instruction = QLabel(
             "Look at something in the distance and let your eyes relax.",
@@ -66,15 +68,18 @@ class QuickBreakDialog(QDialog):
         self._timer.setInterval(100)
         self._timer.timeout.connect(self._on_tick)
 
-    def start(self, duration_s: int) -> None:
+    def start(self, duration_s: int, kind: BreakKind = "quick") -> None:
         """Start the countdown for a validated break duration."""
         if isinstance(duration_s, bool) or not isinstance(duration_s, int):
             raise TypeError("duration_s must be an integer")
         if duration_s < 1:
             raise ValueError("duration_s must be positive")
+        if kind not in {"quick", "long"}:
+            raise ValueError("A timed rest break must be quick or long")
         self._duration_s = duration_s
         self._started_at = self._clock.monotonic()
         self._active = True
+        self._title_label.setText("Take a longer break" if kind == "long" else "Rest your eyes")
         self.countdown_ring.reset(float(duration_s))
         self.show()
         self.raise_()

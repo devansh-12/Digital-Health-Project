@@ -73,6 +73,7 @@ class DashboardWindow(QDialog):
         self._settings_dialog = settings_dialog
         self._clock = clock if clock is not None else SystemClock()
         self._theme = settings_repo.load().ui_theme
+        self._trend_days = 7
         self._card_heading_labels: list[QLabel] = []
 
         self.setWindowTitle("ScreenSense — Dashboard")
@@ -128,7 +129,7 @@ class DashboardWindow(QDialog):
         score_layout.addLayout(score_h)
 
         score_center = QHBoxLayout()
-        self._gauge = ScoreGaugeWidget(self)
+        self._gauge = ScoreGaugeWidget(theme=self._theme, parent=self)
         score_center.addWidget(self._gauge)
         score_layout.addLayout(score_center)
 
@@ -146,7 +147,7 @@ class DashboardWindow(QDialog):
         tl_h = self._create_card_header("activity", "Today's timeline")
         timeline_layout.addLayout(tl_h)
 
-        self._timeline_widget = TodayTimelineWidget(self)
+        self._timeline_widget = TodayTimelineWidget(theme=self._theme, parent=self)
         timeline_layout.addWidget(self._timeline_widget)
 
         self._timeline_summary = QLabel("")
@@ -189,10 +190,32 @@ class DashboardWindow(QDialog):
         trend_layout.setContentsMargins(14, 12, 14, 12)
         trend_layout.setSpacing(6)
 
-        trend_h = self._create_card_header("chart", "7-day trend")
+        trend_h = QHBoxLayout()
+        trend_h.setSpacing(6)
+        trend_icon = QLabel()
+        trend_icon.setPixmap(get_svg_pixmap("chart", "#2A9D8F", 14))
+        trend_h.addWidget(trend_icon)
+        self._trend_heading = QLabel("7-day trend")
+        self._trend_heading.setStyleSheet(
+            "font-size: 13px; font-weight: 600; color: #ffffff;"
+        )
+        self._card_heading_labels.append(self._trend_heading)
+        trend_h.addWidget(self._trend_heading)
+        trend_h.addStretch()
+        self._trend_7_button = QPushButton("7 days", self)
+        self._trend_7_button.setCheckable(True)
+        self._trend_7_button.setChecked(True)
+        self._trend_7_button.setAccessibleName("Show 7-day trend")
+        self._trend_30_button = QPushButton("30 days", self)
+        self._trend_30_button.setCheckable(True)
+        self._trend_30_button.setAccessibleName("Show 30-day trend")
+        self._trend_7_button.clicked.connect(lambda: self._set_trend_days(7))
+        self._trend_30_button.clicked.connect(lambda: self._set_trend_days(30))
+        trend_h.addWidget(self._trend_7_button)
+        trend_h.addWidget(self._trend_30_button)
         trend_layout.addLayout(trend_h)
 
-        self._trend_chart = WeeklyTrendChartWidget(self)
+        self._trend_chart = WeeklyTrendChartWidget(theme=self._theme, parent=self)
         trend_layout.addWidget(self._trend_chart)
 
         self._trend_summary = QLabel("")
@@ -269,6 +292,9 @@ class DashboardWindow(QDialog):
             raise ValueError(f"Unsupported theme: {theme}")
         self._theme = theme
         self._apply_theme()
+        self._gauge.set_theme(theme)
+        self._timeline_widget.set_theme(theme)
+        self._trend_chart.set_theme(theme)
         self._render_badges(self._badges_repo.earned_codes())
 
     def _apply_theme(self) -> None:
@@ -425,17 +451,21 @@ class DashboardWindow(QDialog):
 
         self._render_badges(earned_codes)
 
-        recent_scores = self._scores_repo.list_recent(7)
+        recent_scores = self._scores_repo.list_recent(self._trend_days)
         recent_dict = {rec.day: rec.score for rec in recent_scores}
         chart_data: list[tuple[str, int]] = []
-        for i in range(6, -1, -1):
+        for i in range(self._trend_days - 1, -1, -1):
             target_day = now_dt.date() - timedelta(days=i)
             day_str = target_day.strftime("%Y-%m-%d")
-            day_label = target_day.strftime("%a")
+            day_label = (
+                target_day.strftime("%a")
+                if self._trend_days == 7
+                else target_day.strftime("%d")
+            )
             chart_data.append((day_label, recent_dict.get(day_str, 0)))
         self._trend_chart.set_data(chart_data)
         avg_score = int(sum(s for _, s in chart_data) / max(1, len(chart_data)))
-        self._trend_summary.setText(f"7-day average: {avg_score} pts")
+        self._trend_summary.setText(f"{self._trend_days}-day average: {avg_score} pts")
 
         if completed_b > 0:
             self._insight_text.setText(f"Insight: {breakdown.explanation}")
@@ -443,6 +473,16 @@ class DashboardWindow(QDialog):
             self._insight_text.setText(
                 "Insight: Your day starts here. A short break is a good first step."
             )
+
+    def _set_trend_days(self, days: int) -> None:
+        """Switch between the supported 7-day and 30-day dashboard trends."""
+        if days not in {7, 30}:
+            raise ValueError("Trend range must be 7 or 30 days")
+        self._trend_days = days
+        self._trend_heading.setText(f"{days}-day trend")
+        self._trend_7_button.setChecked(days == 7)
+        self._trend_30_button.setChecked(days == 30)
+        self.refresh_data()
 
     def _render_badges(self, earned_codes: set[str]) -> None:
         while self._badges_layout.count():
