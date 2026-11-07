@@ -12,6 +12,8 @@ from screensense.core.scheduler import Scheduler
 from screensense.core.tracker import UsageBucket
 from screensense.storage.db import open_database
 from screensense.storage.repositories import (
+    BlinkMetricsRepository,
+    BlinkMinuteRecord,
     BreakKind,
     BreakOutcome,
     BreaksRepository,
@@ -250,3 +252,37 @@ def test_usage_hourly_repository_connection_factory_opens_and_closes(tmp_path) -
         assert row[0] == 5
     finally:
         reader.close()
+
+
+def test_usage_and_blink_repositories_prune_before(connection) -> None:
+    """Verify pruning removes rows before cutoff while preserving newer rows."""
+    usage_repo = UsageHourlyRepository(connection=connection)
+    usage_repo.write_usage(
+        [
+            UsageBucket(3_600, active_s=10),
+            UsageBucket(7_200, active_s=20),
+            UsageBucket(10_800, active_s=30),
+        ]
+    )
+
+    blink_repo = BlinkMetricsRepository(connection=connection)
+    blink_repo.record_minute(
+        BlinkMinuteRecord(minute_start=60, blinks=10, face_present_ratio=1.0, ear_mean=0.25)
+    )
+    blink_repo.record_minute(
+        BlinkMinuteRecord(minute_start=120, blinks=12, face_present_ratio=1.0, ear_mean=0.25)
+    )
+
+    # Prune usage older than 7_200
+    deleted_usage = usage_repo.prune_before(7_200)
+    assert deleted_usage == 1
+    remaining_usage = usage_repo.get_hourly_breakdown_for_range(0, 20_000)
+    assert len(remaining_usage) == 2
+    assert remaining_usage[0][0] == 7_200
+
+    # Prune blink records older than 120
+    deleted_blink = blink_repo.prune_before(120)
+    assert deleted_blink == 1
+    remaining_blink = blink_repo.list_for_range(0, 500)
+    assert len(remaining_blink) == 1
+    assert remaining_blink[0].minute_start == 120

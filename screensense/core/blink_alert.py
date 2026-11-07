@@ -43,9 +43,9 @@ class BlinkAlertEvaluator:
 
         if self._consecutive_low_minutes >= self._required_consecutive:
             now = self._clock.monotonic()
+            self._consecutive_low_minutes = 0
             if now - self._last_alert_monotonic >= self._cooldown:
                 self._last_alert_monotonic = now
-                self._consecutive_low_minutes = 0
                 return True
 
         return False

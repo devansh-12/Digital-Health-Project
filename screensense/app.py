@@ -10,6 +10,7 @@ from typing import Any
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
+from screensense.core.blink_alert import BlinkAlertEvaluator
 from screensense.core.clock import Clock
 from screensense.core.config import Settings
 from screensense.core.context import ContextEvaluator, ContextInputs, ContextRule
@@ -32,6 +33,7 @@ from screensense.storage.repositories import (
     UsageHourlyRepository,
     YogaSessionsRepository,
 )
+from screensense.ui.blink_calibration import BlinkCalibrationCard
 from screensense.ui.dashboard.window import DashboardWindow
 from screensense.ui.event_bridge import SchedulerUiBridge
 from screensense.ui.eye_yoga.player import EyeYogaPlayer
@@ -170,11 +172,14 @@ class BlinkMonitorController:
 
     def __init__(
         self,
-        tray: ScreenSenseTray,
+        tray: ScreenSenseTray | None,
         settings_dialog: SettingsDialog,
         settings_repository: SettingsRepository,
         blink_repository: BlinkMetricsRepository,
         stats_overlay: StatsOverlayWidget,
+        scheduler: Scheduler | None = None,
+        calibration_card: BlinkCalibrationCard | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._monitor: VisionMonitorProcess | None = None
         self._tray = tray
@@ -182,6 +187,12 @@ class BlinkMonitorController:
         self._settings_repository = settings_repository
         self._blink_repository = blink_repository
         self._stats_overlay = stats_overlay
+        self._scheduler = scheduler
+        self._calibration_card = calibration_card
+        self._clock = clock
+        self._blink_alert = (
+            BlinkAlertEvaluator(clock) if clock is not None else None
+        )
 
     def start(self) -> None:
         """Launch the worker process if not already running."""
@@ -191,25 +202,30 @@ class BlinkMonitorController:
         try:
             monitor.start()
         except (AssertionError, OSError, RuntimeError) as error:
-            self._tray.show_message(
-                "Blink monitoring could not start",
-                str(error),
-                QSystemTrayIcon.MessageIcon.Warning,
-            )
+            if self._tray is not None:
+                self._tray.show_message(
+                    "Blink monitoring could not start",
+                    str(error),
+                    QSystemTrayIcon.MessageIcon.Warning,
+                )
             self._settings_dialog.set_blink_monitor_enabled(False)
             self._settings_repository.save(
                 replace(self._settings_repository.load(), blink_monitor_enabled=False)
             )
             return
         self._monitor = monitor
-        self._tray.set_camera_active(True, "Starting")
+        if self._tray is not None:
+            self._tray.set_camera_active(True, "Starting")
 
     def stop(self, *, persist_disabled: bool) -> None:
         """Halt the vision process and update tray/dialog states."""
         if self._monitor is not None:
             self._monitor.stop()
             self._monitor = None
-        self._tray.set_camera_active(False)
+        if self._calibration_card is not None:
+            self._calibration_card.finish()
+        if self._tray is not None:
+            self._tray.set_camera_active(False)
         self._settings_dialog.set_blink_monitor_enabled(False)
         if persist_disabled:
             current = self._settings_repository.load()
@@ -227,36 +243,45 @@ class BlinkMonitorController:
                 return
         if not self._monitor.is_running:
             self.stop(persist_disabled=True)
-            self._tray.show_message(
-                "Blink monitoring stopped",
-                "The vision worker exited unexpectedly. You can try enabling it again in Settings.",
-                QSystemTrayIcon.MessageIcon.Warning,
-            )
+            if self._tray is not None:
+                self._tray.show_message(
+                    "Blink monitoring stopped",
+                    "The vision worker exited unexpectedly. You can try enabling it again in Settings.",
+                    QSystemTrayIcon.MessageIcon.Warning,
+                )
 
     def _handle_message(self, message: dict[str, Any]) -> bool:
         msg_type = message.get("type")
         if msg_type == "status":
-            self._tray.set_camera_active(True, str(message["status"]).title())
+            status_str = str(message["status"])
+            if self._tray is not None:
+                self._tray.set_camera_active(True, status_str.title())
+            if status_str == "calibrating" and self._calibration_card is not None:
+                self._calibration_card.start()
+            elif status_str == "monitoring" and self._calibration_card is not None:
+                self._calibration_card.finish()
         elif msg_type == "metrics":
             self._record_metrics(message["metrics"])
         elif msg_type == "error":
             self.stop(persist_disabled=True)
-            self._tray.show_message(
-                "Blink monitoring stopped",
-                str(message["message"]),
-                QSystemTrayIcon.MessageIcon.Warning,
-            )
+            if self._tray is not None:
+                self._tray.show_message(
+                    "Blink monitoring stopped",
+                    str(message["message"]),
+                    QSystemTrayIcon.MessageIcon.Warning,
+                )
             return True
         return False
 
     def _record_metrics(self, values: dict[str, Any]) -> None:
         blinks_count = int(values["blinks"])
+        face_present_ratio = float(values["face_present_ratio"])
         self._stats_overlay.update_blink_rate(blinks_count)
         self._blink_repository.record_minute(
             BlinkMinuteRecord(
                 minute_start=int(values["minute_start"]),
                 blinks=blinks_count,
-                face_present_ratio=float(values["face_present_ratio"]),
+                face_present_ratio=face_present_ratio,
                 ear_mean=(
                     float(values["ear_mean"])
                     if values.get("ear_mean") is not None
@@ -264,6 +289,18 @@ class BlinkMonitorController:
                 ),
             )
         )
+        if (
+            self._blink_alert is not None
+            and self._scheduler is not None
+            and self._tray is not None
+            and self._blink_alert.record_minute(blinks_count, face_present_ratio)
+            and self._scheduler.nudge_break_forward()
+        ):
+            self._tray.show_message(
+                "Rest your eyes soon",
+                "Your blink rate has been low recently. Next break has been moved forward.",
+                QSystemTrayIcon.MessageIcon.Information,
+            )
 
 
 def main() -> int:
@@ -295,6 +332,10 @@ def main() -> int:
     if not startup_settings.onboarding_completed:
         OnboardingDialog(settings_repo).exec()
         startup_settings = settings_repo.load()
+
+    cutoff_epoch = int(clock.wall_time()) - startup_settings.data_retention_days * 86_400
+    usage_repo.prune_before(cutoff_epoch)
+    BlinkMetricsRepository(database).prune_before(cutoff_epoch)
 
     app.setStyleSheet(load_stylesheet(startup_settings.ui_theme))
     settings_dialog = SettingsDialog(
@@ -346,6 +387,7 @@ def main() -> int:
         dashboard_window.activateWindow()
 
     stats_overlay = StatsOverlayWidget()
+    calibration_card = BlinkCalibrationCard()
 
     def toggle_stats_overlay() -> None:
         if stats_overlay.isVisible():
@@ -359,6 +401,9 @@ def main() -> int:
         settings_repository=settings_repo,
         blink_repository=BlinkMetricsRepository(database),
         stats_overlay=stats_overlay,
+        scheduler=scheduler,
+        calibration_card=calibration_card,
+        clock=clock,
     )
 
     tray = ScreenSenseTray(
@@ -440,6 +485,7 @@ def main() -> int:
     app.aboutToQuit.connect(tick_timer.stop)
     app.aboutToQuit.connect(blink_poll_timer.stop)
     app.aboutToQuit.connect(lambda: blink_controller.stop(persist_disabled=False))
+    app.aboutToQuit.connect(calibration_card.close)
     app.aboutToQuit.connect(stats_overlay.close)
     app.aboutToQuit.connect(yoga_player.close)
     app.aboutToQuit.connect(quick_break_dialog.close)

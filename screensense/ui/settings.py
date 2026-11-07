@@ -144,7 +144,7 @@ class SettingsDialog(QDialog):
         self.idle_threshold.setSuffix(" sec")
         self.idle_threshold.setAccessibleName("Idle detection threshold in seconds")
 
-        for label, control in (
+        for label, widget in (
             ("Screen goal", self.screen_goal),
             ("Yoga target", self.yoga_target),
             ("Idle threshold", self.idle_threshold),
@@ -153,7 +153,7 @@ class SettingsDialog(QDialog):
             lbl = QLabel(label, self)
             lbl.setObjectName("settingsFieldLabel")
             field.addWidget(lbl)
-            field.addWidget(control)
+            field.addWidget(widget)
             goals_row.addLayout(field)
         layout.addLayout(goals_row)
 

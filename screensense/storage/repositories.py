@@ -431,26 +431,6 @@ class UsageHourlyRepository:
             if should_close:
                 conn.close()
 
-    def prune_before(self, cutoff_epoch: int) -> int:
-        """Delete usage rows older than cutoff_epoch. Returns count of deleted rows."""
-        conn = self._connection
-        should_close = False
-        if conn is None:
-            if self._connection_factory is None:
-                return 0
-            conn = self._connection_factory()
-            should_close = True
-        try:
-            with conn:
-                cursor = conn.execute(
-                    "DELETE FROM usage_hourly WHERE hour_start < ?",
-                    (cutoff_epoch,),
-                )
-                return cursor.rowcount
-        finally:
-            if should_close:
-                conn.close()
-
     def get_hourly_breakdown_for_range(
         self, start_ts: int, end_ts: int
     ) -> list[tuple[int, int, int]]:
@@ -694,6 +674,15 @@ class BlinkMetricsRepository:
             )
             for row in rows
         ]
+
+    def prune_before(self, cutoff_epoch: int) -> int:
+        """Delete blink metric rows older than cutoff_epoch. Returns count of deleted rows."""
+        with self._connection:
+            cursor = self._connection.execute(
+                "DELETE FROM blink_minutely WHERE minute_start < ?",
+                (cutoff_epoch,),
+            )
+            return cursor.rowcount
 
 
 @dataclass(frozen=True, slots=True)

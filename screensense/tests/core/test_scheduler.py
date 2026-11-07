@@ -396,3 +396,22 @@ def test_on_demand_break_and_cancel() -> None:
     assert scheduler.state is State.WORKING
     assert completed == [BreakCompleted(kind="yoga", duration_s=60)]
 
+
+def test_nudge_break_forward_advances_work_interval() -> None:
+    """Nudging advances work_elapsed if remaining time is greater than min threshold."""
+    scheduler, clock, _, _prompts, _, _ = make_scheduler(
+        Settings(work_interval_minutes=20)
+    )
+    # 20 minutes = 1200 seconds. Advance 5 minutes (300 s).
+    clock.advance(300)
+    scheduler.tick(ContextState.FREE)
+    assert scheduler.work_elapsed == 300
+
+    # Remaining is 900 s > 300 s. Nudge should jump work_elapsed to 1200 - 300 = 900 s.
+    assert scheduler.nudge_break_forward(min_seconds_before_due=300)
+    assert scheduler.work_elapsed == 900
+
+    # If remaining is already <= min threshold, nudge returns False
+    assert not scheduler.nudge_break_forward(min_seconds_before_due=300)
+    assert scheduler.work_elapsed == 900
+
