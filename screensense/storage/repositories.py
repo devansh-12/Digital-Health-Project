@@ -99,6 +99,7 @@ class SettingsRepository:
             ui_theme=str(values[SettingsKey.UI_THEME]),
             reduced_motion=bool(values[SettingsKey.REDUCED_MOTION]),
             snooze_limit_per_session=int(values[SettingsKey.SNOOZE_LIMIT_PER_SESSION]),
+            data_retention_days=int(values.get(SettingsKey.DATA_RETENTION_DAYS, 90)),
         )
 
     @staticmethod
@@ -430,6 +431,26 @@ class UsageHourlyRepository:
             if should_close:
                 conn.close()
 
+    def prune_before(self, cutoff_epoch: int) -> int:
+        """Delete usage rows older than cutoff_epoch. Returns count of deleted rows."""
+        conn = self._connection
+        should_close = False
+        if conn is None:
+            if self._connection_factory is None:
+                return 0
+            conn = self._connection_factory()
+            should_close = True
+        try:
+            with conn:
+                cursor = conn.execute(
+                    "DELETE FROM usage_hourly WHERE hour_start < ?",
+                    (cutoff_epoch,),
+                )
+                return cursor.rowcount
+        finally:
+            if should_close:
+                conn.close()
+
     def get_hourly_breakdown_for_range(
         self, start_ts: int, end_ts: int
     ) -> list[tuple[int, int, int]]:
@@ -451,6 +472,26 @@ class UsageHourlyRepository:
                 (start_ts, end_ts),
             )
             return [(int(r[0]), int(r[1]), int(r[2])) for r in cursor.fetchall()]
+        finally:
+            if should_close:
+                conn.close()
+
+    def prune_before(self, cutoff_epoch: int) -> int:
+        """Delete usage rows older than cutoff_epoch. Returns count of deleted rows."""
+        conn = self._connection
+        should_close = False
+        if conn is None:
+            if self._connection_factory is None:
+                return 0
+            conn = self._connection_factory()
+            should_close = True
+        try:
+            with conn:
+                cursor = conn.execute(
+                    "DELETE FROM usage_hourly WHERE hour_start < ?",
+                    (cutoff_epoch,),
+                )
+                return cursor.rowcount
         finally:
             if should_close:
                 conn.close()

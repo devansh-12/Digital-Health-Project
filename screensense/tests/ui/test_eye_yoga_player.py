@@ -104,3 +104,21 @@ def test_eye_yoga_player_exit_signal(qapp) -> None:
     assert done == 0
     assert total == 6
     player.close()
+
+
+def test_eye_yoga_player_audio_chimes_respect_reduced_motion(qapp) -> None:
+    """Verify audio cues are disabled when reduced motion is enabled."""
+    clock = FakeClock()
+    player_normal = EyeYogaPlayer(clock=clock, reduced_motion=False)
+    assert player_normal._step_chime is not None
+    assert player_normal._complete_chime is not None
+    player_normal.close()
+
+    player_reduced = EyeYogaPlayer(clock=clock, reduced_motion=True)
+    assert player_reduced._step_chime is None
+    assert player_reduced._complete_chime is None
+
+    # Toggling reduced motion to False sets them up
+    player_reduced.set_reduced_motion(False)
+    assert player_reduced._step_chime is not None
+    player_reduced.close()

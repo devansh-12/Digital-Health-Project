@@ -23,6 +23,7 @@ class SettingsKey(StrEnum):
     UI_THEME = "ui_theme"
     REDUCED_MOTION = "reduced_motion"
     SNOOZE_LIMIT_PER_SESSION = "snooze_limit_per_session"
+    DATA_RETENTION_DAYS = "data_retention_days"
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +60,7 @@ class Settings:
     ui_theme: str = "dark"
     reduced_motion: bool = False
     snooze_limit_per_session: int = 0
+    data_retention_days: int = 90
 
     def __post_init__(self) -> None:
         """Reject values outside the supported settings ranges."""
@@ -84,6 +86,12 @@ class Settings:
             SettingsKey.SNOOZE_LIMIT_PER_SESSION,
             self.snooze_limit_per_session,
             minimum=0,
+        )
+        self._validate_integer(
+            SettingsKey.DATA_RETENTION_DAYS,
+            self.data_retention_days,
+            minimum=7,
+            maximum=365,
         )
         self._validate_positive_number(
             SettingsKey.SCREEN_GOAL_HOURS, self.screen_goal_hours
@@ -125,6 +133,7 @@ class Settings:
             SettingsKey.UI_THEME: self.ui_theme,
             SettingsKey.REDUCED_MOTION: self.reduced_motion,
             SettingsKey.SNOOZE_LIMIT_PER_SESSION: self.snooze_limit_per_session,
+            SettingsKey.DATA_RETENTION_DAYS: self.data_retention_days,
         }
 
     @staticmethod

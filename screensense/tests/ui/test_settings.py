@@ -36,6 +36,10 @@ def test_settings_dialog_saves_schedule_and_process_rules(app, tmp_path) -> None
         dialog.long_break_every.setValue(4)
         dialog.snooze_duration.setValue(8)
         dialog.snooze_limit.setValue(3)
+        dialog.screen_goal.setValue(6.5)
+        dialog.yoga_target.setValue(5)
+        dialog.idle_threshold.setValue(180)
+        dialog.retention_days.setValue(60)
         for button in dialog.day_checks:
             button.setChecked(False)
         dialog.day_checks[0].setChecked(True)
@@ -57,6 +61,10 @@ def test_settings_dialog_saves_schedule_and_process_rules(app, tmp_path) -> None
         assert settings_repo.load().long_break_every == 4
         assert settings_repo.load().snooze_minutes == 8
         assert settings_repo.load().snooze_limit_per_session == 3
+        assert settings_repo.load().screen_goal_hours == 6.5
+        assert settings_repo.load().yoga_target_per_day == 5
+        assert settings_repo.load().idle_threshold_seconds == 180
+        assert settings_repo.load().data_retention_days == 60
         assert rules_repo.load_all() == {"videoplayer.exe": ContextRule.FULLSCREEN_OK}
         dialog.close()
     finally:

@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
+    QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -120,6 +121,42 @@ class SettingsDialog(QDialog):
                 row.addLayout(field)
             layout.addLayout(row)
 
+        goals_label = QLabel("Goals & detection", self)
+        goals_label.setObjectName("settingsSectionHeading")
+        layout.addWidget(goals_label)
+
+        goals_row = QHBoxLayout()
+        goals_row.setSpacing(10)
+
+        self.screen_goal = QDoubleSpinBox(self)
+        self.screen_goal.setRange(1.0, 24.0)
+        self.screen_goal.setSingleStep(0.5)
+        self.screen_goal.setSuffix(" h")
+        self.screen_goal.setAccessibleName("Daily screen time goal in hours")
+
+        self.yoga_target = QSpinBox(self)
+        self.yoga_target.setRange(1, 10)
+        self.yoga_target.setSuffix(" sessions")
+        self.yoga_target.setAccessibleName("Eye Yoga sessions target per day")
+
+        self.idle_threshold = QSpinBox(self)
+        self.idle_threshold.setRange(30, 600)
+        self.idle_threshold.setSuffix(" sec")
+        self.idle_threshold.setAccessibleName("Idle detection threshold in seconds")
+
+        for label, control in (
+            ("Screen goal", self.screen_goal),
+            ("Yoga target", self.yoga_target),
+            ("Idle threshold", self.idle_threshold),
+        ):
+            field = QVBoxLayout()
+            lbl = QLabel(label, self)
+            lbl.setObjectName("settingsFieldLabel")
+            field.addWidget(lbl)
+            field.addWidget(control)
+            goals_row.addLayout(field)
+        layout.addLayout(goals_row)
+
         self.day_checks: list[QPushButton] = []
         days = QHBoxLayout()
         days.setSpacing(6)
@@ -220,6 +257,23 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.reduced_motion_checkbox)
         layout.addWidget(self.autostart_checkbox)
         layout.addWidget(self.autostart_help)
+        storage_label = QLabel("Storage & history", self)
+        storage_label.setObjectName("settingsSectionHeading")
+        layout.addWidget(storage_label)
+
+        retention_row = QHBoxLayout()
+        retention_lbl = QLabel("Keep history for", self)
+        retention_lbl.setObjectName("settingsFieldLabel")
+        retention_row.addWidget(retention_lbl)
+
+        self.retention_days = QSpinBox(self)
+        self.retention_days.setRange(7, 365)
+        self.retention_days.setSuffix(" days")
+        self.retention_days.setAccessibleName("Data retention period in days")
+        retention_row.addWidget(self.retention_days)
+        retention_row.addStretch()
+        layout.addLayout(retention_row)
+
         layout.addWidget(self.validation_label)
         scroll_area.setWidget(content)
         root_layout.addWidget(scroll_area, 1)
@@ -244,6 +298,10 @@ class SettingsDialog(QDialog):
         self.long_break_every.setValue(settings.long_break_every)
         self.snooze_duration.setValue(settings.snooze_minutes)
         self.snooze_limit.setValue(settings.snooze_limit_per_session)
+        self.screen_goal.setValue(settings.screen_goal_hours)
+        self.yoga_target.setValue(settings.yoga_target_per_day)
+        self.idle_threshold.setValue(settings.idle_threshold_seconds)
+        self.retention_days.setValue(settings.data_retention_days)
         self.blink_monitor_checkbox.setChecked(settings.blink_monitor_enabled)
         self.theme_choice.setCurrentIndex(
             max(0, self.theme_choice.findData(settings.ui_theme))
@@ -332,6 +390,10 @@ class SettingsDialog(QDialog):
             long_break_every=self.long_break_every.value(),
             snooze_minutes=self.snooze_duration.value(),
             snooze_limit_per_session=self.snooze_limit.value(),
+            screen_goal_hours=self.screen_goal.value(),
+            yoga_target_per_day=self.yoga_target.value(),
+            idle_threshold_seconds=self.idle_threshold.value(),
+            data_retention_days=self.retention_days.value(),
             work_hours=schedule,
             blink_monitor_enabled=blink_enabled,
             ui_theme=str(self.theme_choice.currentData()),

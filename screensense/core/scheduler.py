@@ -208,6 +208,20 @@ class Scheduler:
         self._completed_breaks += 1
         self._begin_work_interval()
 
+    def nudge_break_forward(self, min_seconds_before_due: float = 300.0) -> bool:
+        """Advance the current work interval so the next break prompt fires sooner.
+
+        Returns True if the work timer was nudged forward.
+        """
+        if self._state not in (State.WORKING, State.SUPPRESS):
+            return False
+        interval = float(self._interval_seconds())
+        remaining = interval - self._work_elapsed
+        if remaining > min_seconds_before_due:
+            self._work_elapsed = interval - min_seconds_before_due
+            return True
+        return False
+
     def update_settings(self, settings: Settings) -> None:
         """Replace settings while preserving elapsed work time."""
         self._settings = settings

@@ -1,7 +1,10 @@
 """Display the guided 60-second Eye Yoga interactive player."""
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from pathlib import Path
+
+from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QCloseEvent, QKeyEvent
+from PyQt6.QtMultimedia import QSoundEffect
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -56,6 +59,7 @@ class EyeYogaPlayer(QWidget):
 
         self._build_ui()
         self._apply_theme()
+        self._setup_chimes(self._reduced_motion)
 
         self._timer = QTimer(self)
         self._timer.setInterval(200)
@@ -169,7 +173,27 @@ class EyeYogaPlayer(QWidget):
 
     def set_reduced_motion(self, reduced: bool) -> None:
         """Update animation motion preference for the active or next routine."""
+        self._reduced_motion = reduced
         self._anim_widget.set_reduced_motion(reduced)
+        self._setup_chimes(reduced)
+
+    def _setup_chimes(self, reduced: bool) -> None:
+        """Initialize or silence audio cues based on the motion/accessibility preference."""
+        self._step_chime: QSoundEffect | None = None
+        self._complete_chime: QSoundEffect | None = None
+        if reduced:
+            return
+        sounds_dir = Path(__file__).parent.parent.parent / "assets" / "sounds"
+        chime_file = sounds_dir / "chime.wav"
+        complete_file = sounds_dir / "complete.wav"
+        if chime_file.exists():
+            self._step_chime = QSoundEffect(self)
+            self._step_chime.setSource(QUrl.fromLocalFile(str(chime_file)))
+            self._step_chime.setVolume(0.35)
+        if complete_file.exists():
+            self._complete_chime = QSoundEffect(self)
+            self._complete_chime.setSource(QUrl.fromLocalFile(str(complete_file)))
+            self._complete_chime.setVolume(0.40)
 
     def set_theme(self, theme: str) -> None:
         """Apply the selected light or dark palette to the routine player."""
@@ -246,6 +270,8 @@ class EyeYogaPlayer(QWidget):
         if self._current_step_index >= len(self._routine.steps):
             self._finish_routine()
         else:
+            if self._step_chime is not None:
+                self._step_chime.play()
             step = self._routine.steps[self._current_step_index]
             self._step_remaining_s = float(step.seconds)
             self._countdown_ring.reset(float(step.seconds))
@@ -254,6 +280,8 @@ class EyeYogaPlayer(QWidget):
     def _finish_routine(self) -> None:
         self._is_finished = True
         self._timer.stop()
+        if self._complete_chime is not None:
+            self._complete_chime.play()
 
         self._anim_widget.hide()
         self._countdown_ring.hide()
