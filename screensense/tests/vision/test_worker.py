@@ -2,8 +2,9 @@
 
 import queue
 
-import numpy as np
 import pytest
+
+np = pytest.importorskip("numpy", reason="numpy not installed; vision tests skipped")
 
 from screensense.vision.blink import BlinkMinute
 from screensense.vision.worker import FaceLandmarkDetector, _publish_minute
