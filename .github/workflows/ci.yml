@@ -24,7 +24,7 @@ jobs:
         run: python -m ruff check .
 
       - name: Type-check with mypy
-        run: python -m mypy screensense --ignore-missing-imports --disable-error-code=import-untyped
+        run: python -m mypy screensense --config-file mypy.ini
 
       - name: Run tests
         run: python -m pytest

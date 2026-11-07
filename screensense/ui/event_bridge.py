@@ -45,7 +45,7 @@ class SchedulerUiBridge(QObject):
         self._on_start_break = on_start_break
         self._closed = False
         self.event_received.connect(
-            self._handle_event, Qt.ConnectionType.QueuedConnection
+            self._handle_event, Qt.ConnectionType.QueuedConnection  # type: ignore[call-arg]
         )
         self._subscriptions: list[Unsubscribe] = [
             event_bus.subscribe(ShowPrompt, self._queue_event),

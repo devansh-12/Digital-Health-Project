@@ -64,7 +64,7 @@ class UsageFlushController(QObject):
         self._flush_in_progress = True
         task = _FlushTask(self._tracker, self._writer)
         task.signals.finished.connect(
-            self._on_flush_finished, Qt.ConnectionType.QueuedConnection
+            self._on_flush_finished, Qt.ConnectionType.QueuedConnection  # type: ignore[call-arg]
         )
         self._pool.start(task)
 

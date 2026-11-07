@@ -19,7 +19,7 @@ class PowerEventBridge(QObject):
         super().__init__(parent)
         self._handler = handler
         self.event_received.connect(
-            self._handle_event, Qt.ConnectionType.QueuedConnection
+            self._handle_event, Qt.ConnectionType.QueuedConnection  # type: ignore[call-arg]
         )
 
     def enqueue(self, event: PowerEvent) -> None:
