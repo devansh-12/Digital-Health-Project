@@ -1,6 +1,7 @@
 """Tests for the vision worker process and face landmark detector."""
 
 import queue
+
 import numpy as np
 import pytest
 

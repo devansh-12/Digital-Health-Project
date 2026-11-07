@@ -363,14 +363,14 @@ class BreaksRepository:
     def _to_record(row: sqlite3.Row | tuple[object, ...]) -> BreakRecord:
         outcome_value = row[4]
         return BreakRecord(
-            id=int(row[0]),
-            due_at=int(row[1]),
-            shown_at=int(row[2]) if row[2] is not None else None,
+            id=int(str(row[0])),
+            due_at=int(str(row[1])),
+            shown_at=int(str(row[2])) if row[2] is not None else None,
             kind=BreakKind(str(row[3])),
             outcome=(
                 BreakOutcome(str(outcome_value)) if outcome_value is not None else None
             ),
-            duration_s=int(row[5]) if row[5] is not None else None,
+            duration_s=int(str(row[5])) if row[5] is not None else None,
         )
 
 
@@ -529,7 +529,7 @@ class YogaSessionsRepository:
                 """,
                 (started_at, steps_completed, total_steps, duration_s),
             )
-            return int(cursor.lastrowid)
+            return int(cursor.lastrowid or 0)
 
     def count_today(self, day_start_timestamp: int) -> int:
         """Return the count of completed sessions started on or after day_start_timestamp."""

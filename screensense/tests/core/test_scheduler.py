@@ -91,7 +91,7 @@ def test_snooze_reprompts_after_five_minutes(
 def test_snooze_limit_enforced() -> None:
     """When snooze limit is reached, snooze acts as skip and returns to WORKING."""
     settings = Settings(snooze_limit_per_session=1)
-    scheduler, clock, _, prompts, _, skipped = make_scheduler(settings)
+    scheduler, clock, _, _prompts, _, skipped = make_scheduler(settings)
     clock.advance(20 * 60)
     scheduler.tick(ContextState.FREE)
     assert scheduler.state is State.PROMPTING

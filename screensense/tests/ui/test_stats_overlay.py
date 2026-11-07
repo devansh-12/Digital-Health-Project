@@ -1,6 +1,7 @@
 """Test the transparent stats HUD overlay."""
 
 import os
+
 import pytest
 from PyQt6.QtWidgets import QApplication
 

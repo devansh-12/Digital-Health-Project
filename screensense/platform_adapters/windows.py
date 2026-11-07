@@ -145,7 +145,7 @@ class WindowsPowerProvider:
         thread = self._thread
         if thread is None:
             return
-        if self._window_handle is not None:
+        if self._window_handle is not None and hasattr(ctypes, "WinDLL"):
             ctypes.WinDLL("user32", use_last_error=True).PostMessageW(
                 self._window_handle, _WM_CLOSE, 0, 0
             )
